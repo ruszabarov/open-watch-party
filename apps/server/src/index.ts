@@ -1,7 +1,5 @@
 import http from 'node:http';
-
 import { Server } from 'socket.io';
-
 import {
   applyPlaybackUpdate,
   createRoomCode,

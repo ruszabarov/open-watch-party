@@ -17,25 +17,7 @@ export function createNetflixAdapter(): StreamingServiceAdapter {
   let notifyContext: ((context: ServiceContentContext) => void) | null = null;
   let notifyPlaybackUpdate: ((update: PlaybackUpdate) => void) | null = null;
 
-  const onPlay = (): void => {
-    if (!notifyContext || !notifyPlaybackUpdate) {
-      return;
-    }
-
-    emitContextIfChanged(notifyContext);
-    emitPlaybackUpdate(notifyPlaybackUpdate);
-  };
-
-  const onPause = (): void => {
-    if (!notifyContext || !notifyPlaybackUpdate) {
-      return;
-    }
-
-    emitContextIfChanged(notifyContext);
-    emitPlaybackUpdate(notifyPlaybackUpdate);
-  };
-
-  const onSeeked = (): void => {
+  const handlePlaybackSignal = (): void => {
     if (!notifyContext || !notifyPlaybackUpdate) {
       return;
     }
@@ -114,6 +96,13 @@ export function createNetflixAdapter(): StreamingServiceAdapter {
     });
   };
 
+  const unbindVideoEvents = (): void => {
+    activeVideo?.removeEventListener('play', handlePlaybackSignal);
+    activeVideo?.removeEventListener('pause', handlePlaybackSignal);
+    activeVideo?.removeEventListener('seeked', handlePlaybackSignal);
+    activeVideo = null;
+  };
+
   const bindVideoEvents = (
     video: HTMLVideoElement,
     onContext: (context: ServiceContentContext) => void,
@@ -123,14 +112,11 @@ export function createNetflixAdapter(): StreamingServiceAdapter {
       return;
     }
 
-    activeVideo?.removeEventListener('play', onPlay);
-    activeVideo?.removeEventListener('pause', onPause);
-    activeVideo?.removeEventListener('seeked', onSeeked);
-
+    unbindVideoEvents();
     activeVideo = video;
-    activeVideo.addEventListener('play', onPlay);
-    activeVideo.addEventListener('pause', onPause);
-    activeVideo.addEventListener('seeked', onSeeked);
+    activeVideo.addEventListener('play', handlePlaybackSignal);
+    activeVideo.addEventListener('pause', handlePlaybackSignal);
+    activeVideo.addEventListener('seeked', handlePlaybackSignal);
     emitContextIfChanged(onContext);
   };
 
@@ -146,10 +132,7 @@ export function createNetflixAdapter(): StreamingServiceAdapter {
       if (video) {
         bindVideoEvents(video, onContext, onPlaybackUpdate);
       } else {
-        activeVideo?.removeEventListener('play', onPlay);
-        activeVideo?.removeEventListener('pause', onPause);
-        activeVideo?.removeEventListener('seeked', onSeeked);
-        activeVideo = null;
+        unbindVideoEvents();
       }
 
       emitContextIfChanged(onContext);
@@ -178,10 +161,7 @@ export function createNetflixAdapter(): StreamingServiceAdapter {
     return () => {
       mutationObserver.disconnect();
       window.clearInterval(intervalId);
-      activeVideo?.removeEventListener('play', onPlay);
-      activeVideo?.removeEventListener('pause', onPause);
-      activeVideo?.removeEventListener('seeked', onSeeked);
-      activeVideo = null;
+      unbindVideoEvents();
       notifyContext = null;
       notifyPlaybackUpdate = null;
     };

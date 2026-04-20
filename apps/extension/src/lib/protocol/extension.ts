@@ -5,7 +5,8 @@ import type {
   ServiceId,
 } from '@watch-party/shared';
 
-export const DEFAULT_SERVER_URL = 'http://localhost:8787';
+export const DEFAULT_SERVER_URL = __WATCH_PARTY_DEFAULT_SERVER_URL__;
+export const SHOW_SERVER_SETTINGS = __WATCH_PARTY_SHOW_SERVER_SETTINGS__;
 export const SYNC_DRIFT_THRESHOLD_SEC = 1.5;
 export const LOCAL_UPDATE_SUPPRESSION_MS = 1_000;
 
@@ -42,6 +43,63 @@ export interface PopupState {
   contentContext: ServiceContentContext | null;
   lastError: string | null;
   lastWarning: string | null;
+}
+
+export function createDefaultPopupState(
+  overrides: Partial<PopupState> = {},
+): PopupState {
+  return {
+    settings: {
+      serverUrl: DEFAULT_SERVER_URL,
+      memberName: 'Guest',
+      ...overrides.settings,
+    },
+    connectionStatus: 'disconnected',
+    room: null,
+    roomMemberId: null,
+    activeTab: {
+      tabId: null,
+      title: '',
+      url: '',
+      isNetflix: false,
+      isNetflixWatchPage: false,
+      ...overrides.activeTab,
+    },
+    controlledTabId: null,
+    contentContext: null,
+    lastError: null,
+    lastWarning: null,
+    ...overrides,
+  };
+}
+
+export function isPopupState(value: unknown): value is PopupState {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<PopupState>;
+  const settings = candidate.settings;
+  const activeTab = candidate.activeTab;
+
+  return Boolean(
+    settings &&
+      typeof settings === 'object' &&
+      typeof settings.memberName === 'string' &&
+      typeof settings.serverUrl === 'string' &&
+      activeTab &&
+      typeof activeTab === 'object' &&
+      typeof activeTab.title === 'string' &&
+      typeof activeTab.url === 'string' &&
+      typeof candidate.connectionStatus === 'string',
+  );
+}
+
+export function coercePopupState(
+  value: unknown,
+  fallback: PopupState = createDefaultPopupState(),
+): PopupState {
+  return isPopupState(value) ? value : fallback;
 }
 
 export type RuntimeRequest =

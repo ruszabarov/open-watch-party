@@ -45,6 +45,7 @@ const SETTINGS_KEY = 'watch-party-settings';
 
 let socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;
 let currentSocketUrl: string | null = null;
+let hasRegisteredEventHandlers = false;
 
 const state: InternalState = {
   settings: {
@@ -71,13 +72,19 @@ const state: InternalState = {
 const contentContexts = new Map<number, ServiceContentContext>();
 
 export default defineBackground(async () => {
+  registerEventHandlers();
   await hydrateState();
   await refreshActiveTab();
   await connectForStoredSession();
-  registerEventHandlers();
 });
 
 function registerEventHandlers(): void {
+  if (hasRegisteredEventHandlers) {
+    return;
+  }
+
+  hasRegisteredEventHandlers = true;
+
   browser.runtime.onMessage.addListener((message: RuntimeRequest | ContentMessage, sender) => {
     return handleMessage(message, sender).catch((error) => {
       state.lastError = getErrorMessage(error);
@@ -231,13 +238,7 @@ async function refreshActiveTab(notify = true): Promise<void> {
   });
 
   if (!activeTab?.id) {
-    state.activeTab = {
-      tabId: null,
-      title: '',
-      url: '',
-      isNetflix: false,
-      isNetflixWatchPage: false,
-    };
+    state.activeTab = createEmptyActiveTabSummary();
     state.contentContext = null;
     if (notify) {
       emitStateChanged();
@@ -567,11 +568,22 @@ async function emitWithAck<T>(
 
 function summarizeTab(tab: BrowserTab): ActiveTabSummary {
   return {
+    ...createEmptyActiveTabSummary(),
     tabId: tab.id ?? null,
     title: tab.title ?? '',
     url: tab.url ?? '',
     isNetflix: isNetflixUrl(tab.url),
     isNetflixWatchPage: Boolean(tab.url && /:\/\/[^/]*netflix\.com\/watch\//.test(tab.url)),
+  };
+}
+
+function createEmptyActiveTabSummary(): ActiveTabSummary {
+  return {
+    tabId: null,
+    title: '',
+    url: '',
+    isNetflix: false,
+    isNetflixWatchPage: false,
   };
 }
 

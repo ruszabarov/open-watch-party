@@ -19,3 +19,10 @@ pnpm build:safari
 ```
 
 Safari packaging still requires Apple's native conversion/wrapper flow after `pnpm build:safari`.
+
+## Extension Environment
+
+Copy [apps/extension/.env.example](/Users/ruszabarov/projects/watch-party-oss/apps/extension/.env.example) to `apps/extension/.env` and set:
+
+- `WATCH_PARTY_SERVER_URL`: default backend URL used by the extension
+- `WATCH_PARTY_SHOW_SERVER_SETTINGS=true`: show the popup server override input for local dev or self-hosted builds

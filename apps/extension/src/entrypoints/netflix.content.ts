@@ -24,7 +24,7 @@ export default defineContentScript({
 
     void browser.runtime.sendMessage({ type: 'content:request-sync' });
 
-    browser.runtime.onMessage.addListener((message: BackgroundToContentMessage) => {
+    const handleRuntimeMessage = (message: BackgroundToContentMessage) => {
       if (message.type === 'party:request-context') {
         return Promise.resolve(adapter.getContext());
       }
@@ -34,10 +34,15 @@ export default defineContentScript({
       }
 
       return undefined;
-    });
+    };
 
-    window.addEventListener('beforeunload', () => {
+    browser.runtime.onMessage.addListener(handleRuntimeMessage);
+
+    const handleBeforeUnload = () => {
       stopObserving();
-    });
+      browser.runtime.onMessage.removeListener(handleRuntimeMessage);
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
   },
 });
