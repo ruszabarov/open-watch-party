@@ -193,10 +193,6 @@ export function createNetflixAdapter(): StreamingServiceAdapter {
     const context = getContext();
     const video = getVideo();
 
-    if (!snapshot.playback) {
-      return { applied: false, reason: 'No playback state available yet.', context };
-    }
-
     if (!video || !context.playbackReady) {
       return { applied: false, reason: 'Netflix player is not ready.', context };
     }

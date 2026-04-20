@@ -38,7 +38,7 @@ export interface PartySnapshot {
   roomCode: string;
   serviceId: ServiceId;
   members: PartyMember[];
-  playback?: PlaybackState;
+  playback: PlaybackState;
   sequence: number;
   createdAt: number;
 }
@@ -70,7 +70,7 @@ export interface CreateRoomRequest {
   memberId: string;
   memberName: string;
   serviceId: ServiceId;
-  initialPlayback?: Omit<PlaybackState, 'sequence' | 'updatedAt' | 'sourceMemberId'>;
+  initialPlayback: Omit<PlaybackState, 'sequence' | 'updatedAt' | 'sourceMemberId'>;
 }
 
 export interface JoinRoomRequest {

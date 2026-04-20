@@ -92,7 +92,7 @@
       mediaId: state.contentContext.mediaId,
       title: state.contentContext.mediaTitle,
       positionSec: Math.max(0, positionSec + (overrides.positionDeltaSec ?? 0)),
-      playing: overrides.playing ?? state.room?.playback?.playing ?? false,
+      playing: overrides.playing ?? state.room!.playback.playing,
       issuedAt: Date.now(),
     };
 
@@ -126,7 +126,7 @@
     return 'Unexpected popup error.';
   }
 
-  $: positionSec = state.room?.playback?.positionSec ?? 0;
+  $: positionSec = state.room?.playback.positionSec ?? 0;
 </script>
 
 <main class="shell">
@@ -182,8 +182,8 @@
       <div class="playback-card">
         <div>
           <p class="eyebrow">Canonical Playback</p>
-          <p class="media-title">{state.room.playback?.title ?? 'Waiting for playback state'}</p>
-          <p class="meta">{positionSec.toFixed(1)}s · {state.room.playback?.playing ? 'Playing' : 'Paused'}</p>
+          <p class="media-title">{state.room.playback.title ?? state.contentContext?.mediaTitle ?? 'Netflix'}</p>
+          <p class="meta">{positionSec.toFixed(1)}s · {state.room.playback.playing ? 'Playing' : 'Paused'}</p>
         </div>
         <div class="controls">
           <button onclick={() => issuePlaybackUpdate({ positionDeltaSec: -10 })} disabled={isBusy}>-10</button>

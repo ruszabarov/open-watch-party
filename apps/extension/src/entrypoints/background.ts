@@ -480,7 +480,7 @@ async function ensureSocket(): Promise<void> {
 }
 
 async function applySnapshotToControlledTab(): Promise<void> {
-  if (!state.room?.playback || state.controlledTabId == null) {
+  if (!state.room || state.controlledTabId == null) {
     return;
   }
 

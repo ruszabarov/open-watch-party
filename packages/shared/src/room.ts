@@ -11,7 +11,7 @@ export interface RoomState {
   roomCode: string;
   serviceId: ServiceId;
   members: Map<string, PartyMember>;
-  playback?: PlaybackState;
+  playback: PlaybackState;
   sequence: number;
   createdAt: number;
 }
@@ -34,32 +34,22 @@ export function createRoomState(
   request: CreateRoomRequest,
   now = Date.now(),
 ): RoomState {
-  let sequence = 0;
-  let playback: PlaybackState | undefined;
+  const sequence = 1;
+  const playback: PlaybackState = {
+    ...request.initialPlayback,
+    updatedAt: now,
+    sourceMemberId: request.memberId,
+    sequence,
+  };
 
-  if (request.initialPlayback) {
-    sequence = 1;
-    playback = {
-      ...request.initialPlayback,
-      updatedAt: now,
-      sourceMemberId: request.memberId,
-      sequence,
-    };
-  }
-
-  const room: RoomState = {
+  return {
     roomCode,
     serviceId: request.serviceId,
     members: new Map<string, PartyMember>(),
+    playback,
     sequence,
     createdAt: now,
   };
-
-  if (playback) {
-    room.playback = playback;
-  }
-
-  return room;
 }
 
 export function upsertRoomMember(
@@ -113,13 +103,9 @@ export function applyPlaybackUpdate(
 }
 
 export function resolvePlaybackState(
-  playback: PlaybackState | undefined,
+  playback: PlaybackState,
   now = Date.now(),
-): PlaybackState | undefined {
-  if (!playback) {
-    return undefined;
-  }
-
+): PlaybackState {
   if (!playback.playing) {
     return playback;
   }
@@ -135,22 +121,16 @@ export function toPartySnapshot(
   room: RoomState,
   now = Date.now(),
 ): PartySnapshot {
-  const snapshot: PartySnapshot = {
+  return {
     roomCode: room.roomCode,
     serviceId: room.serviceId,
     members: [...room.members.values()].sort((left, right) => {
       return left.joinedAt - right.joinedAt;
     }),
+    playback: resolvePlaybackState(room.playback, now),
     sequence: room.sequence,
     createdAt: room.createdAt,
   };
-
-  const playback = resolvePlaybackState(room.playback, now);
-  if (playback) {
-    snapshot.playback = playback;
-  }
-
-  return snapshot;
 }
 
 function normalizePosition(value: number): number {
