@@ -1,7 +1,21 @@
-# WXT + Svelte
+# Watch Party OSS
 
-This template should help get you started developing with Svelte in WXT.
+Open-source watch party stack built as a pnpm workspace:
 
-## Recommended IDE Setup
+- `apps/extension`: WXT + Svelte browser extension
+- `apps/server`: Socket.IO realtime backend with in-memory room state
+- `packages/shared`: shared protocol types and room logic
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+## Commands
+
+```bash
+pnpm install
+pnpm dev:server
+pnpm dev:extension
+pnpm check
+pnpm build
+pnpm build:firefox
+pnpm build:safari
+```
+
+Safari packaging still requires Apple's native conversion/wrapper flow after `pnpm build:safari`.

@@ -1,0 +1,28 @@
+{
+  "name": "@watch-party/extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
+    "build:safari": "wxt build -b safari",
+    "zip": "wxt zip",
+    "check": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "dependencies": {
+    "@watch-party/shared": "workspace:*",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@tsconfig/svelte": "^5.0.8",
+    "@wxt-dev/module-svelte": "^2.0.5",
+    "svelte": "^5.55.4",
+    "svelte-check": "^4.4.6",
+    "tslib": "^2.8.1",
+    "typescript": "^6.0.3",
+    "wxt": "^0.20.25"
+  }
+}
