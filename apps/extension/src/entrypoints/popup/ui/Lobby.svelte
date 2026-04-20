@@ -65,17 +65,19 @@
   }
 </script>
 
-<section class="lobby">
-  <div class="lobby__hero">
+<section class="flex flex-col gap-3">
+  <div class="flex items-start gap-3">
     <ServiceBadge serviceId={popup.contentContext?.serviceId} />
-    <div class="stack-sm">
-      <p class="title">{title}</p>
-      <p class="hint">{hint}</p>
+    <div class="space-y-1">
+      <p class="m-0 text-sm font-semibold leading-5">
+        {title}
+      </p>
+      <p class="m-0 text-sm leading-5 text-[var(--text-muted)]">{hint}</p>
     </div>
   </div>
 
   <button
-    class="btn btn-primary"
+    class="inline-flex h-10 items-center justify-center rounded-lg border border-stone-900 bg-stone-900 px-4 text-base font-bold text-white shadow-sm transition-colors duration-150 ease-[var(--ease)] hover:bg-stone-700 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400"
     type="button"
     onclickcapture={onCreateRoom}
     disabled={!canAct}
@@ -83,11 +85,19 @@
     Create room
   </button>
 
-  <div class="divider" role="separator" aria-hidden="true"></div>
+  <div class="h-px bg-[var(--border)]" role="separator" aria-hidden="true"></div>
 
-  <form class="join" onsubmitcapture={(e) => { e.preventDefault(); handleJoin(); }}>
-    <label class="label" for="join-code">Have a code?</label>
-    <div class="join__row">
+  <form
+    class="flex flex-col gap-2"
+    onsubmitcapture={(e) => { e.preventDefault(); handleJoin(); }}
+  >
+    <label
+      class="text-xs font-semibold uppercase tracking-wide text-[var(--text-subtle)]"
+      for="join-code"
+    >
+      Have a code?
+    </label>
+    <div class="flex gap-2">
       <input
         id="join-code"
         type="text"
@@ -95,11 +105,12 @@
         autocomplete="off"
         spellcheck="false"
         placeholder="ABC123"
+        class="h-9 w-full flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface-1)] px-3 font-semibold uppercase tracking-widest text-[var(--text)] [font-family:var(--font-mono)] transition-colors duration-150 ease-[var(--ease)] placeholder:text-[var(--text-subtle)] hover:border-[var(--border-strong)] focus-visible:border-[var(--border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--surface-0)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ring)]"
         bind:value={joinCode}
         onkeydowncapture={handleCodeKeydown}
       />
       <button
-        class="btn btn-secondary"
+        class="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-[var(--border-strong)] bg-[var(--surface-2)] px-3 text-sm font-semibold whitespace-nowrap text-[var(--text)] shadow-sm transition-colors duration-150 ease-[var(--ease)] hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--surface-0)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ring)]"
         type="submit"
         disabled={!canAct || !trimmedCode}
       >
@@ -108,37 +119,3 @@
     </div>
   </form>
 </section>
-
-<style>
-  .lobby {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .lobby__hero {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 12px;
-    align-items: flex-start;
-  }
-
-  .join {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .join__row {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 8px;
-  }
-
-  .join input {
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    font-family: var(--font-mono);
-    font-weight: 600;
-  }
-</style>

@@ -15,8 +15,10 @@
   "dependencies": {
     "@fontsource-variable/fraunces": "^5.2.9",
     "@fontsource-variable/manrope": "^5.2.8",
+    "@tailwindcss/vite": "^4.2.2",
     "@watch-party/shared": "workspace:*",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "tailwindcss": "^4.2.2"
   },
   "devDependencies": {
     "@tsconfig/svelte": "^5.0.8",

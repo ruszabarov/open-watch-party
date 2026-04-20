@@ -18,37 +18,18 @@
 </script>
 
 <span
-  class="badge badge--{size}"
+  class:h-5={size === 'sm'}
+  class:w-5={size === 'sm'}
+  class:rounded-md={size === 'sm'}
+  class:text-xs={size === 'sm'}
+  class:h-8={size === 'md'}
+  class:w-8={size === 'md'}
+  class:rounded-lg={size === 'md'}
+  class:text-lg={size === 'md'}
+  class="inline-flex shrink-0 items-center justify-center leading-none font-bold [font-family:var(--font-display)] [font-variation-settings:'SOFT'_100,'opsz'_60]"
   style:background={descriptor.accent}
   style:color={descriptor.accentContrast}
   aria-label={descriptor.label}
 >
   {descriptor.glyph}
 </span>
-
-<style>
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-variation-settings: 'SOFT' 100, 'opsz' 60;
-    line-height: 1;
-    flex-shrink: 0;
-  }
-
-  .badge--sm {
-    width: 20px;
-    height: 20px;
-    border-radius: 6px;
-    font-size: 0.72rem;
-  }
-
-  .badge--md {
-    width: 32px;
-    height: 32px;
-    border-radius: 9px;
-    font-size: 1.1rem;
-  }
-</style>

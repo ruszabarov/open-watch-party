@@ -57,15 +57,20 @@
   }
 </script>
 
-<section class="room">
-  <div class="code-card">
-    <div class="code-card__meta">
-      <p class="label">Room code</p>
-      <p class="code" aria-live="polite">{room.roomCode}</p>
+<section class="flex flex-col gap-3">
+  <div class="flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--primary)_6%,var(--surface-1))_0%,var(--surface-1)_100%)] px-4 py-4">
+    <div class="min-w-0 space-y-1">
+      <p class="m-0 text-xs font-semibold uppercase tracking-wide text-[var(--text-subtle)]">Room code</p>
+      <p
+        class="m-0 text-2xl font-bold tracking-wider [font-family:var(--font-display)] [font-variation-settings:'SOFT'_80,'opsz'_108]"
+        aria-live="polite"
+      >
+        {room.roomCode}
+      </p>
     </div>
-    <div class="code-card__actions">
+    <div class="flex shrink-0 items-center gap-2">
       <button
-        class="btn btn-ghost btn-icon"
+        class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-1)] text-[var(--text)] shadow-sm transition-colors duration-150 ease-[var(--ease)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--surface-0)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ring)]"
         type="button"
         aria-label={copied ? 'Copied' : 'Copy room code'}
         onclickcapture={copyCode}
@@ -81,30 +86,45 @@
           </svg>
         {/if}
       </button>
-      <button class="btn btn-danger" type="button" onclickcapture={onLeave} disabled={isBusy}>
+      <button
+        class="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-[var(--danger-border)] bg-[var(--danger-bg)] px-3 text-sm font-semibold whitespace-nowrap text-[var(--danger)] shadow-sm transition-colors duration-150 ease-[var(--ease)] hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--surface-0)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ring)]"
+        type="button"
+        onclickcapture={onLeave}
+        disabled={isBusy}
+      >
         Leave
       </button>
     </div>
   </div>
 
-  <div class="card playback">
-    <div class="playback__meta">
+  <div class="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-4 shadow-[var(--shadow-sm)]">
+    <div class="flex items-center gap-3">
       <ServiceBadge serviceId={playback.serviceId} size="sm" />
-      <div class="stack-sm playback__text">
-        <p class="title playback__title" title={title}>{title}</p>
-        <p class="hint">
-          <span class="status status--{playback.playing ? 'playing' : 'paused'}">
+      <div class="min-w-0 space-y-1">
+        <p
+          class="m-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm font-semibold leading-5"
+          title={title}
+        >
+          {title}
+        </p>
+        <p class="m-0 text-sm leading-5 text-[var(--text-muted)]">
+          <span
+            class:text-[var(--success)]={playback.playing}
+            class:text-[var(--text-muted)]={!playback.playing}
+            class="inline-flex items-center gap-1 font-semibold"
+          >
+            <span class="h-1.5 w-1.5 rounded-full bg-current"></span>
             {playback.playing ? 'Playing' : 'Paused'}
           </span>
           <span aria-hidden="true">·</span>
-          <span class="tabular">{formatPosition(positionSec)}</span>
+          <span class="tabular-nums">{formatPosition(positionSec)}</span>
         </p>
       </div>
     </div>
 
-    <div class="playback__controls" role="group" aria-label="Playback controls">
+    <div class="grid grid-cols-3 gap-2" role="group" aria-label="Playback controls">
       <button
-        class="btn btn-secondary"
+        class="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-[var(--border-strong)] bg-[var(--surface-2)] px-2 text-sm font-semibold text-[var(--text)] shadow-sm transition-colors duration-150 ease-[var(--ease)] hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--surface-0)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ring)]"
         type="button"
         aria-label="Rewind 10 seconds"
         onclickcapture={() => sendUpdate({ positionDeltaSec: -10 })}
@@ -114,7 +134,7 @@
       </button>
       {#if playback.playing}
         <button
-          class="btn btn-primary"
+          class="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-[var(--primary)] bg-[var(--primary)] px-2 text-sm font-bold text-[var(--primary-contrast)] shadow-sm transition-colors duration-150 ease-[var(--ease)] hover:border-[var(--primary-hover)] hover:bg-[var(--primary-hover)] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--surface-0)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ring)]"
           type="button"
           onclickcapture={() => sendUpdate({ playing: false })}
           disabled={!canControl}
@@ -127,7 +147,7 @@
         </button>
       {:else}
         <button
-          class="btn btn-primary"
+          class="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-[var(--primary)] bg-[var(--primary)] px-2 text-sm font-bold text-[var(--primary-contrast)] shadow-sm transition-colors duration-150 ease-[var(--ease)] hover:border-[var(--primary-hover)] hover:bg-[var(--primary-hover)] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--surface-0)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ring)]"
           type="button"
           onclickcapture={() => sendUpdate({ playing: true })}
           disabled={!canControl}
@@ -139,7 +159,7 @@
         </button>
       {/if}
       <button
-        class="btn btn-secondary"
+        class="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-[var(--border-strong)] bg-[var(--surface-2)] px-2 text-sm font-semibold text-[var(--text)] shadow-sm transition-colors duration-150 ease-[var(--ease)] hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--surface-0)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ring)]"
         type="button"
         aria-label="Skip 10 seconds"
         onclickcapture={() => sendUpdate({ positionDeltaSec: 10 })}
@@ -151,21 +171,33 @@
   </div>
 
   {#if room.members.length}
-    <div class="members">
-      <p class="label members__heading">
+    <div>
+      <p class="mb-2 mt-0 text-xs font-semibold uppercase tracking-wide text-[var(--text-subtle)]">
         {room.members.length} {room.members.length === 1 ? 'member' : 'members'}
       </p>
-      <ul class="members__list">
+      <ul class="m-0 flex list-none flex-wrap gap-2 p-0">
         {#each room.members as member (member.id)}
           <li
-            class="chip"
-            class:chip--me={member.id === popup.roomMemberId}
+            class:bg-[var(--primary)]={member.id === popup.roomMemberId}
+            class:border-[var(--primary)]={member.id === popup.roomMemberId}
+            class:text-[var(--primary-contrast)]={member.id === popup.roomMemberId}
+            class:bg-[var(--surface-2)]={member.id !== popup.roomMemberId}
+            class:border-[var(--border)]={member.id !== popup.roomMemberId}
+            class:text-[var(--text)]={member.id !== popup.roomMemberId}
+            class="inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1 pl-1 text-sm"
             title={member.name}
           >
-            <span class="chip__avatar" aria-hidden="true">
+            <span
+              class:bg-[color-mix(in_srgb,var(--primary-contrast)_20%,transparent)]={member.id === popup.roomMemberId}
+              class:text-[var(--primary-contrast)]={member.id === popup.roomMemberId}
+              class:bg-[var(--surface-1)]={member.id !== popup.roomMemberId}
+              class:text-[var(--text)]={member.id !== popup.roomMemberId}
+              class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold"
+              aria-hidden="true"
+            >
               {member.name.slice(0, 1).toUpperCase()}
             </span>
-            <span class="chip__name">
+            <span class="max-w-44 overflow-hidden text-ellipsis whitespace-nowrap">
               {member.name}{member.id === popup.roomMemberId ? ' (you)' : ''}
             </span>
           </li>
@@ -174,161 +206,3 @@
     </div>
   {/if}
 </section>
-
-<style>
-  .room {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .code-card {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 14px 14px 14px 16px;
-    border-radius: var(--radius-lg);
-    background: linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--primary) 6%, var(--surface-1)) 0%,
-      var(--surface-1) 100%
-    );
-    border: 1px solid var(--border);
-  }
-
-  .code-card__meta {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-  }
-
-  .code {
-    margin: 0;
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 1.6rem;
-    letter-spacing: 0.08em;
-    line-height: 1.1;
-    font-variation-settings: 'SOFT' 80, 'opsz' 108;
-  }
-
-  .code-card__actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
-  }
-
-  .playback__meta {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 10px;
-    align-items: center;
-  }
-
-  .playback__text {
-    min-width: 0;
-  }
-
-  .playback__title {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .playback__controls {
-    display: grid;
-    grid-template-columns: 1fr 1.3fr 1fr;
-    gap: 6px;
-  }
-
-  .playback__controls .btn {
-    padding: 0 8px;
-  }
-
-  .tabular {
-    font-variant-numeric: tabular-nums;
-  }
-
-  .status {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-weight: 600;
-  }
-
-  .status::before {
-    content: '';
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-  }
-
-  .status--playing {
-    color: var(--success);
-  }
-
-  .status--paused {
-    color: var(--text-muted);
-  }
-
-  .members__heading {
-    margin: 0 0 8px;
-  }
-
-  .members__list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px 4px 4px;
-    border-radius: 999px;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    font-size: 0.78rem;
-    max-width: 100%;
-  }
-
-  .chip__avatar {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: var(--surface-1);
-    color: var(--text);
-    font-weight: 700;
-    font-size: 0.72rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .chip__name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 180px;
-  }
-
-  .chip--me {
-    background: var(--primary);
-    color: var(--primary-contrast);
-    border-color: var(--primary);
-  }
-
-  .chip--me .chip__avatar {
-    background: color-mix(in srgb, var(--primary-contrast) 20%, transparent);
-    color: var(--primary-contrast);
-  }
-</style>

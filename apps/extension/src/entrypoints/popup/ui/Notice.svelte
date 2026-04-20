@@ -8,8 +8,17 @@
   const { kind, message, onDismiss }: Props = $props();
 </script>
 
-<div class="notice notice--{kind}" role={kind === 'error' ? 'alert' : 'status'}>
-  <span class="notice__icon" aria-hidden="true">
+<div
+  class:border-[var(--danger-border)]={kind === 'error'}
+  class:bg-[var(--danger-bg)]={kind === 'error'}
+  class:text-[var(--danger)]={kind === 'error'}
+  class:border-[var(--warning-border)]={kind === 'warning'}
+  class:bg-[var(--warning-bg)]={kind === 'warning'}
+  class:text-[var(--warning)]={kind === 'warning'}
+  class="flex items-start gap-2 rounded-lg border px-3 py-2 text-sm"
+  role={kind === 'error' ? 'alert' : 'status'}
+>
+  <span class="inline-flex shrink-0 pt-0.5" aria-hidden="true">
     {#if kind === 'error'}
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
         <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.4" />
@@ -28,11 +37,11 @@
     {/if}
   </span>
 
-  <span class="notice__message">{message}</span>
+  <span class="min-w-0 flex-1 break-words text-[var(--text)]">{message}</span>
 
   {#if onDismiss}
     <button
-      class="notice__dismiss"
+      class="inline-flex items-center justify-center rounded-md border-none bg-transparent p-1 text-current opacity-70 transition-opacity duration-150 ease-[var(--ease)] hover:bg-[color-mix(in_srgb,currentColor_12%,transparent)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--surface-0)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ring)]"
       type="button"
       aria-label="Dismiss"
       onclickcapture={onDismiss}
@@ -43,58 +52,3 @@
     </button>
   {/if}
 </div>
-
-<style>
-  .notice {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    gap: 8px;
-    align-items: flex-start;
-    padding: 10px 12px;
-    border-radius: var(--radius-md);
-    border: 1px solid;
-    font-size: 0.8125rem;
-    line-height: 1.4;
-  }
-
-  .notice--error {
-    background: var(--danger-bg);
-    border-color: var(--danger-border);
-    color: var(--danger);
-  }
-
-  .notice--warning {
-    background: var(--warning-bg);
-    border-color: var(--warning-border);
-    color: var(--warning);
-  }
-
-  .notice__icon {
-    display: inline-flex;
-    padding-top: 2px;
-    flex-shrink: 0;
-  }
-
-  .notice__message {
-    min-width: 0;
-    color: var(--text);
-    word-break: break-word;
-  }
-
-  .notice__dismiss {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 4px;
-    border-radius: 6px;
-    background: transparent;
-    color: currentColor;
-    border: none;
-    opacity: 0.7;
-  }
-
-  .notice__dismiss:hover {
-    opacity: 1;
-    background: color-mix(in srgb, currentColor 12%, transparent);
-  }
-</style>

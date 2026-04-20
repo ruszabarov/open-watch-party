@@ -1,4 +1,5 @@
 import { defineConfig } from 'wxt';
+import tailwindcss from '@tailwindcss/vite';
 
 const LOCAL_SERVER_URL = 'http://localhost:8787';
 const defaultServerUrl = process.env.WATCH_PARTY_SERVER_URL ?? LOCAL_SERVER_URL;
@@ -8,6 +9,7 @@ export default defineConfig({
   srcDir: 'src',
   modules: ['@wxt-dev/module-svelte'],
   vite: () => ({
+    plugins: [tailwindcss()],
     define: {
       __WATCH_PARTY_DEFAULT_SERVER_URL__: JSON.stringify(defaultServerUrl),
       __WATCH_PARTY_SHOW_SERVER_SETTINGS__: JSON.stringify(showServerSettings),

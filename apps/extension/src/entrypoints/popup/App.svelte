@@ -120,25 +120,24 @@
   });
 </script>
 
-<div class="shell">
+<div class="flex min-h-full flex-col overflow-hidden bg-[var(--surface-0)] text-[var(--text)]">
   <Header
     status={popup.connectionStatus}
     settingsOpen={settingsOpen}
     onToggleSettings={toggleSettings}
   />
 
-  <main class="shell__main">
+  <main class="flex-1 p-3">
     {#if settingsOpen}
-      <div class="shell__view">
+      <div class="flex min-h-full flex-col gap-3">
         <Settings
           settings={popup.settings}
           {isBusy}
           onSave={handleSaveSettings}
-          onClose={closeSettings}
         />
       </div>
     {:else}
-      <div class="shell__view">
+      <div class="flex min-h-full flex-col gap-3">
         {#if popup.room}
           <Room
             popup={popup}
@@ -166,12 +165,3 @@
     {/if}
   </main>
 </div>
-
-<style>
-  .shell__view {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    min-height: 100%;
-  }
-</style>

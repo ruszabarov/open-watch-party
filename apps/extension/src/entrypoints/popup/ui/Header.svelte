@@ -9,28 +9,18 @@
   }
 
   const { status, settingsOpen, onToggleSettings }: Props = $props();
-  const settingsLabel = $derived(settingsOpen ? 'Close settings' : 'Open settings');
-  const settingsCopy = $derived(settingsOpen ? 'Close' : 'Settings');
+  const settingsLabel = $derived(settingsOpen ? 'Go to lobby' : 'Go to settings');
+  const settingsCopy = $derived(settingsOpen ? 'Lobby' : 'Settings');
 </script>
 
-<header class="header">
-  <div class="brand">
-    <span class="brand__mark" aria-hidden="true">
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-        <path
-          d="M3 2.5L3 11.5M11 2.5L11 11.5M3 7H11"
-          stroke="currentColor"
-          stroke-width="1.75"
-          stroke-linecap="round"
-        />
-      </svg>
-    </span>
-    <span class="brand__name">Watch Party</span>
+<header class="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface-0)] px-4 py-3">
+  <div class="font-semibold">
+    <span class="text-sm">Watch Party</span>
   </div>
 
-  <div class="controls">
+  <div class="flex shrink-0 items-center gap-2">
     <button
-      class="btn btn-ghost header__settings"
+      class="inline-flex h-8 items-center justify-center gap-1 rounded-full border border-[var(--border)] bg-[var(--surface-1)] px-3 text-sm font-semibold text-[var(--text)] shadow-sm transition-colors duration-150 ease-[var(--ease)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--surface-0)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--ring)]"
       type="button"
       aria-label={settingsLabel}
       aria-pressed={settingsOpen}
@@ -54,52 +44,3 @@
     <ConnectionDot {status} />
   </div>
 </header>
-
-<style>
-  .header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 14px 10px 16px;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface-0);
-  }
-
-  .brand {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-  }
-
-  .brand__mark {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    border-radius: 7px;
-    background: var(--primary);
-    color: var(--primary-contrast);
-  }
-
-  .brand__name {
-    font-size: 0.9rem;
-  }
-
-  .controls {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-
-  .header__settings {
-    height: 32px;
-    padding: 0 10px;
-    gap: 6px;
-    font-size: 0.78rem;
-    border-radius: 999px;
-  }
-</style>

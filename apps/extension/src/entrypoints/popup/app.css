@@ -1,8 +1,9 @@
 @import '@fontsource-variable/manrope';
 @import '@fontsource-variable/fraunces';
+@import 'tailwindcss';
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
   --font-sans: 'Manrope Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-display: 'Fraunces Variable', 'Fraunces', Georgia, serif;
@@ -56,37 +57,6 @@
   font-synthesis: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --surface-0: #0c0a09;
-    --surface-1: #1c1917;
-    --surface-2: #292524;
-    --surface-hover: #2a2624;
-
-    --border: rgba(250, 250, 249, 0.08);
-    --border-strong: rgba(250, 250, 249, 0.16);
-    --ring: rgba(250, 250, 249, 0.22);
-
-    --text: #fafaf9;
-    --text-muted: #a8a29e;
-    --text-subtle: #78716c;
-
-    --primary: #fafaf9;
-    --primary-contrast: #0c0a09;
-    --primary-hover: #e7e5e4;
-
-    --warning-bg: rgba(251, 191, 36, 0.08);
-    --warning-border: rgba(251, 191, 36, 0.28);
-    --danger-bg: rgba(239, 68, 68, 0.08);
-    --danger-border: rgba(239, 68, 68, 0.28);
-    --danger: #fca5a5;
-    --warning: #fcd34d;
-
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.35);
-  }
-}
-
 *,
 *::before,
 *::after {
@@ -103,6 +73,8 @@ body {
 body {
   width: 360px;
   min-height: 440px;
+  font-family: var(--font-sans);
+  font-size: 14px;
 }
 
 #app {
@@ -115,147 +87,6 @@ textarea,
 select {
   font: inherit;
   color: inherit;
-}
-
-button {
-  appearance: none;
-  border: 1px solid transparent;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  border-radius: var(--radius-md);
-  transition:
-    background-color 140ms var(--ease),
-    border-color 140ms var(--ease),
-    color 140ms var(--ease),
-    opacity 140ms var(--ease),
-    transform 140ms var(--ease);
-}
-
-button:focus-visible,
-input:focus-visible,
-summary:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--surface-0), 0 0 0 4px var(--ring);
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 0 14px;
-  height: 38px;
-  font-weight: 600;
-  font-size: 0.875rem;
-  letter-spacing: -0.005em;
-  white-space: nowrap;
-}
-
-.btn-primary {
-  background: var(--primary);
-  color: var(--primary-contrast);
-  border-color: var(--primary);
-}
-
-.btn-primary:not(:disabled):hover {
-  background: var(--primary-hover);
-  border-color: var(--primary-hover);
-}
-
-.btn-secondary {
-  background: var(--surface-1);
-  border-color: var(--border);
-  color: var(--text);
-}
-
-.btn-secondary:not(:disabled):hover {
-  background: var(--surface-hover);
-  border-color: var(--border-strong);
-}
-
-.btn-ghost {
-  background: transparent;
-  color: var(--text-muted);
-}
-
-.btn-ghost:not(:disabled):hover {
-  background: var(--surface-2);
-  color: var(--text);
-}
-
-.btn-danger {
-  background: transparent;
-  border-color: var(--border);
-  color: var(--danger);
-}
-
-.btn-danger:not(:disabled):hover {
-  background: var(--danger-bg);
-  border-color: var(--danger-border);
-}
-
-.btn-icon {
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  border-radius: var(--radius-md);
-}
-
-input[type='text'],
-input[type='url'] {
-  width: 100%;
-  height: 38px;
-  padding: 0 12px;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  transition:
-    border-color 140ms var(--ease),
-    background-color 140ms var(--ease);
-}
-
-input::placeholder {
-  color: var(--text-subtle);
-}
-
-input:not(:disabled):hover {
-  border-color: var(--border-strong);
-}
-
-input:focus-visible {
-  border-color: var(--border-strong);
-}
-
-.label {
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-subtle);
-}
-
-.hint {
-  font-size: 0.8125rem;
-  line-height: 1.45;
-  color: var(--text-muted);
-}
-
-.title {
-  font-size: 0.9375rem;
-  font-weight: 600;
-  line-height: 1.4;
-  letter-spacing: -0.005em;
-}
-
-.divider {
-  height: 1px;
-  background: var(--border);
 }
 
 .shell {

@@ -14,46 +14,18 @@
     reconnecting: 'Reconnecting',
     error: 'Connection error',
   };
+
+  const toneClasses: Record<ConnectionStatus, string> = {
+    disconnected: 'bg-[var(--text-subtle)] text-[var(--text-subtle)]',
+    connecting: 'animate-pulse bg-[var(--warning)] text-[var(--warning)]',
+    connected: 'bg-[var(--success)] text-[var(--success)]',
+    reconnecting: 'animate-pulse bg-[var(--warning)] text-[var(--warning)]',
+    error: 'bg-[var(--danger)] text-[var(--danger)]',
+  };
 </script>
 
-<span class="dot dot--{status}" title={labels[status]} aria-label={labels[status]}></span>
-
-<style>
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    display: inline-block;
-    background: var(--text-subtle);
-    box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 12%, transparent);
-    color: var(--text-subtle);
-    transition: background-color 180ms var(--ease), color 180ms var(--ease);
-  }
-
-  .dot--connected {
-    background: var(--success);
-    color: var(--success);
-  }
-
-  .dot--connecting,
-  .dot--reconnecting {
-    background: var(--warning);
-    color: var(--warning);
-    animation: pulse 1.4s var(--ease) infinite;
-  }
-
-  .dot--error {
-    background: var(--danger);
-    color: var(--danger);
-  }
-
-  @keyframes pulse {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.4;
-    }
-  }
-</style>
+<span
+  class={`inline-block h-2 w-2 rounded-full shadow-[0_0_0_3px_color-mix(in_srgb,currentColor_12%,transparent)] transition-colors duration-150 ease-[var(--ease)] ${toneClasses[status]}`}
+  title={labels[status]}
+  aria-label={labels[status]}
+></span>
