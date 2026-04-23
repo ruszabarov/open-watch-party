@@ -4,9 +4,9 @@
 
   import {
     createDefaultPopupState,
-    type BackgroundBroadcast,
     type PopupState,
   } from '../../utils/protocol/extension';
+  import { onMessage } from '../../utils/protocol/messaging';
   import { getErrorMessage } from '../../utils/errors';
   import {
     POPUP_BACKGROUND_SERVICE_KEY,
@@ -83,29 +83,15 @@
     settingsOpen = false;
   }
 
-  function isBackgroundBroadcast(message: unknown): message is BackgroundBroadcast {
-    return (
-      !!message &&
-      typeof message === 'object' &&
-      'type' in message &&
-      message.type === 'party:state-updated' &&
-      'state' in message
-    );
-  }
-
   onMount(() => {
     void syncState();
 
-    const listener = (message: unknown) => {
-      if (isBackgroundBroadcast(message)) {
-        popup = message.state;
-      }
-    };
-
-    browser.runtime.onMessage.addListener(listener);
+    const removeStateListener = onMessage('party:state-updated', ({ data }) => {
+      popup = data;
+    });
 
     return () => {
-      browser.runtime.onMessage.removeListener(listener);
+      removeStateListener();
     };
   });
 </script>
