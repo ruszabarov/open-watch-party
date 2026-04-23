@@ -1,12 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { createProxyService } from '@webext-core/proxy-service';
 
   import {
     createDefaultPopupState,
     type PopupState,
   } from '../../utils/protocol/extension';
-  import { sendMessage, type PopupRequest } from '../../utils/protocol/messaging';
   import { getErrorMessage } from '../../utils/errors';
+  import {
+    POPUP_BACKGROUND_SERVICE_KEY,
+    type PopupBackgroundService,
+  } from '../../utils/background/popup-background-service';
 
   import Header from '../../components/popup/Header.svelte';
   import Lobby from '../../components/popup/Lobby.svelte';
@@ -15,6 +19,9 @@
   import Notice from '../../components/popup/Notice.svelte';
 
   const emptyState = createDefaultPopupState();
+  const backgroundService = createProxyService<PopupBackgroundService>(
+    POPUP_BACKGROUND_SERVICE_KEY,
+  );
 
   let popup: PopupState = $state(emptyState);
   let isBusy = $state(false);
@@ -26,16 +33,16 @@
 
   async function syncState(): Promise<void> {
     try {
-      popup = await sendBackgroundRequest({ type: 'party:get-state' });
+      popup = await backgroundService.getState();
     } catch (error) {
       setLastError(error);
     }
   }
 
-  async function perform(request: PopupRequest): Promise<void> {
+  async function perform(action: () => Promise<PopupState>): Promise<void> {
     isBusy = true;
     try {
-      popup = await sendBackgroundRequest(request);
+      popup = await action();
     } catch (error) {
       setLastError(error);
     } finally {
@@ -44,19 +51,19 @@
   }
 
   function handleCreateRoom(): void {
-    void perform({ type: 'room:create' });
+    void perform(() => backgroundService.createRoom());
   }
 
   function handleJoinRoom(roomCode: string): void {
-    void perform({ type: 'room:join', payload: { roomCode } });
+    void perform(() => backgroundService.joinRoom({ roomCode }));
   }
 
   function handleLeaveRoom(): void {
-    void perform({ type: 'room:leave' });
+    void perform(() => backgroundService.leaveRoom());
   }
 
   function handleSaveSettings(next: PopupState['settings']): void {
-    void perform({ type: 'settings:update', payload: next }).then(() => {
+    void perform(() => backgroundService.updateSettings(next)).then(() => {
       closeSettings();
     });
   }
@@ -75,23 +82,6 @@
 
   function closeSettings(): void {
     settingsOpen = false;
-  }
-
-  async function sendBackgroundRequest(request: PopupRequest): Promise<PopupState> {
-    switch (request.type) {
-      case 'party:get-state':
-        return sendMessage('party:get-state');
-      case 'settings:update':
-        return sendMessage('settings:update', request.payload);
-      case 'room:create':
-        return sendMessage('room:create');
-      case 'room:join':
-        return sendMessage('room:join', request.payload);
-      case 'room:leave':
-        return sendMessage('room:leave');
-      case 'room:playback-update':
-        return sendMessage('room:playback-update', request.payload);
-    }
   }
 
   onMount(() => {
