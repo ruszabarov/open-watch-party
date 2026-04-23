@@ -241,7 +241,6 @@ export function createDomVideoAdapter(
           title: context.mediaTitle,
           positionSec: context.positionSec,
           playing: context.playing,
-          issuedAt: Date.now(),
         });
       };
 

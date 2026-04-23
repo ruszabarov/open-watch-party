@@ -1,6 +1,9 @@
 import { defineExtensionMessaging } from '@webext-core/messaging';
 
-import type { PartySnapshot, PlaybackUpdate } from '@watch-party/shared';
+import type {
+  PartySnapshot,
+  PlaybackUpdateDraft,
+} from '@watch-party/shared';
 
 import type {
   ApplySnapshotResult,
@@ -10,7 +13,7 @@ import type {
 
 export interface ExtensionProtocolMap {
   'content:context': (payload: ServiceContentContext) => void;
-  'content:playback-update': (payload: PlaybackUpdate) => void;
+  'content:playback-update': (payload: PlaybackUpdateDraft) => void;
   'content:request-sync': () => void;
   'party:request-context': () => ServiceContentContext;
   'party:apply-snapshot': (payload: { snapshot: PartySnapshot }) => ApplySnapshotResult;

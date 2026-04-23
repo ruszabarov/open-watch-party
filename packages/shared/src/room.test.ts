@@ -10,6 +10,7 @@ import {
   MAX_MEMBER_NAME_LENGTH,
   MAX_PLAYBACK_POSITION_SEC,
   MAX_TITLE_LENGTH,
+  removeRoomMember,
   playbackUpdateRequestSchema,
   normalizeRoomCode,
   resolvePlaybackState,
@@ -23,7 +24,7 @@ describe('room reducer', () => {
     expect(normalizeRoomCode(' ab12cd ')).toBe('AB12CD');
   });
 
-  it('orders playback updates by server receive sequence', () => {
+  it('accepts playback updates with increasing client sequence numbers', () => {
     const room = createRoomState(
       'ROOM01',
       {
@@ -51,7 +52,7 @@ describe('room reducer', () => {
         mediaId: '123',
         positionSec: 10,
         playing: true,
-        issuedAt: 1_200,
+        clientSequence: 1,
       },
       'member-a',
       1_500,
@@ -64,7 +65,7 @@ describe('room reducer', () => {
         mediaId: '123',
         positionSec: 12,
         playing: false,
-        issuedAt: 1_300,
+        clientSequence: 1,
       },
       'member-b',
       1_600,
@@ -74,6 +75,58 @@ describe('room reducer', () => {
     expect(room.playback.playing).toBe(false);
     expect(room.playback.sequence).toBe(3);
     expect(room.playback.sourceMemberId).toBe('member-b');
+  });
+
+  it('ignores stale playback updates from the same member', () => {
+    const room = createRoomState(
+      'ROOM01',
+      {
+        memberId: 'member-a',
+        memberName: 'Member A',
+        serviceId: 'netflix',
+        initialPlayback: {
+          serviceId: 'netflix',
+          mediaId: '123',
+          title: 'Example',
+          positionSec: 0,
+          playing: false,
+        },
+      },
+      1_000,
+    );
+
+    upsertRoomMember(room, 'member-a', 'Member A', 1_000);
+
+    applyPlaybackUpdate(
+      room,
+      {
+        serviceId: 'netflix',
+        mediaId: '123',
+        positionSec: 10,
+        playing: true,
+        clientSequence: 2,
+      },
+      'member-a',
+      1_500,
+    );
+
+    const playback = applyPlaybackUpdate(
+      room,
+      {
+        serviceId: 'netflix',
+        mediaId: '123',
+        positionSec: 3,
+        playing: false,
+        clientSequence: 1,
+      },
+      'member-a',
+      1_600,
+    );
+
+    expect(playback).toBe(room.playback);
+    expect(room.sequence).toBe(2);
+    expect(room.playback.positionSec).toBe(10);
+    expect(room.playback.playing).toBe(true);
   });
 
   it('resolves live playback position for late join snapshots', () => {
@@ -103,7 +156,7 @@ describe('room reducer', () => {
         mediaId: '456',
         positionSec: 25,
         playing: true,
-        issuedAt: 1_050,
+        clientSequence: 1,
       },
       'member-a',
       1_100,
@@ -187,7 +240,7 @@ describe('room reducer', () => {
         mediaId: 'next456',
         positionSec: 0,
         playing: false,
-        issuedAt: 2_100,
+        clientSequence: 1,
       },
       'member-a',
       2_200,
@@ -257,7 +310,7 @@ describe('protocol schemas', () => {
         mediaId: 'abc123',
         playing: true,
         positionSec: Number.POSITIVE_INFINITY,
-        issuedAt: 1_000,
+        clientSequence: 0,
       },
     });
 
@@ -271,7 +324,7 @@ describe('protocol schemas', () => {
         mediaId: 'abc123',
         playing: true,
         positionSec: 1e308,
-        issuedAt: 1_000,
+        clientSequence: 0,
       },
     });
 
@@ -314,5 +367,40 @@ describe('protocol schemas', () => {
 
     const playback = resolvePlaybackState(room.playback, 5_000);
     expect(playback.positionSec).toBe(MAX_PLAYBACK_POSITION_SEC);
+  });
+
+  it('clears per-member client sequence state when removing a member', () => {
+    const room = createRoomState('ROOM09', {
+      memberId: 'member-a',
+      memberName: 'Member A',
+      serviceId: 'youtube',
+      initialPlayback: {
+        serviceId: 'youtube',
+        mediaId: 'abc123',
+        title: 'Clip',
+        positionSec: 4,
+        playing: true,
+      },
+    });
+
+    upsertRoomMember(room, 'member-a', 'Member A');
+
+    applyPlaybackUpdate(
+      room,
+      {
+        serviceId: 'youtube',
+        mediaId: 'abc123',
+        positionSec: 5,
+        playing: true,
+        clientSequence: 3,
+      },
+      'member-a',
+      2_000,
+    );
+
+    expect(room.lastPlaybackClientSequenceByMember.get('member-a')).toBe(3);
+
+    expect(removeRoomMember(room, 'member-a')).toBe(true);
+    expect(room.lastPlaybackClientSequenceByMember.has('member-a')).toBe(false);
   });
 });

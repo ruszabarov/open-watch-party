@@ -1,4 +1,4 @@
-import type { PartySnapshot, PlaybackUpdate } from '@watch-party/shared';
+import type { PartySnapshot, PlaybackUpdateDraft } from '@watch-party/shared';
 
 import type {
   ApplySnapshotResult,
@@ -27,7 +27,7 @@ interface TabSyncDependencies {
   readonly state: InternalState;
   readonly getRoom: () => PartySnapshot | null;
   readonly onControlledPlaybackUpdate: (
-    update: PlaybackUpdate,
+    update: PlaybackUpdateDraft,
     isLocalRelay: true,
   ) => Promise<void>;
 }
@@ -133,7 +133,7 @@ export class TabSyncService {
 
   async relayControlledPlaybackUpdate(
     tabId: number,
-    update: PlaybackUpdate,
+    update: PlaybackUpdateDraft,
   ): Promise<void> {
     if (tabId !== this.deps.state.controlledTabId) {
       return;

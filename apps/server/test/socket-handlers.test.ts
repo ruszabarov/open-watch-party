@@ -66,9 +66,18 @@ const validPlaybackUpdatePayload = {
     title: 'Clip',
     playing: false,
     positionSec: 15,
-    issuedAt: 1_777_000_000_000,
+    clientSequence: 1,
   },
 };
+
+function createPlaybackUpdatePayload(clientSequence: number) {
+  return {
+    update: {
+      ...validPlaybackUpdatePayload.update,
+      clientSequence,
+    },
+  };
+}
 
 function createPlaybackUpdateTestContext(socketId = 'socket-1') {
   const io = new FakeIo();
@@ -152,14 +161,14 @@ describe('socket handlers', () => {
 
     for (let index = 0; index < 20; index += 1) {
       let response: OperationResult<unknown> | null = null;
-      playbackUpdateHandler(validPlaybackUpdatePayload, (value) => {
+      playbackUpdateHandler(createPlaybackUpdatePayload(index + 1), (value) => {
         response = value;
       });
       expect(response).toMatchObject({ ok: true });
     }
 
     let response: OperationResult<unknown> | null = null;
-    playbackUpdateHandler(validPlaybackUpdatePayload, (value) => {
+    playbackUpdateHandler(createPlaybackUpdatePayload(21), (value) => {
       response = value;
     });
 
@@ -179,7 +188,7 @@ describe('socket handlers', () => {
     state.activeSocketByMember.delete(`${room.roomCode}:member-a`);
 
     let response: OperationResult<unknown> | null = null;
-    playbackUpdateHandler(validPlaybackUpdatePayload, (value) => {
+    playbackUpdateHandler(createPlaybackUpdatePayload(1), (value) => {
       response = value;
     });
 
@@ -221,11 +230,11 @@ describe('socket handlers', () => {
     const { room, socket, playbackUpdateHandler } = createPlaybackUpdateTestContext();
 
     for (let index = 0; index < 20; index += 1) {
-      playbackUpdateHandler(validPlaybackUpdatePayload, () => undefined);
+      playbackUpdateHandler(createPlaybackUpdatePayload(index + 1), () => undefined);
     }
 
     let rejectedResponse: OperationResult<unknown> | null = null;
-    playbackUpdateHandler(validPlaybackUpdatePayload, (value) => {
+    playbackUpdateHandler(createPlaybackUpdatePayload(21), (value) => {
       rejectedResponse = value;
     });
     expect(rejectedResponse).toEqual({
@@ -236,7 +245,7 @@ describe('socket handlers', () => {
     vi.setSystemTime(new Date('2026-04-23T12:00:00.100Z'));
 
     let acceptedResponse: OperationResult<unknown> | null = null;
-    playbackUpdateHandler(validPlaybackUpdatePayload, (value) => {
+    playbackUpdateHandler(createPlaybackUpdatePayload(22), (value) => {
       acceptedResponse = value;
     });
 
@@ -252,7 +261,7 @@ describe('socket handlers', () => {
     const { disconnectHandler, playbackUpdateHandler, state } =
       createPlaybackUpdateTestContext();
 
-    playbackUpdateHandler(validPlaybackUpdatePayload, () => undefined);
+    playbackUpdateHandler(createPlaybackUpdatePayload(1), () => undefined);
 
     expect(state.playbackUpdateRateLimiter.consume('socket-1')).toBe(true);
 
@@ -269,12 +278,32 @@ describe('socket handlers', () => {
     const { room, playbackUpdateHandler } = createPlaybackUpdateTestContext();
 
     let response: OperationResult<unknown> | null = null;
-    playbackUpdateHandler(validPlaybackUpdatePayload, (value) => {
+    playbackUpdateHandler(createPlaybackUpdatePayload(1), (value) => {
       response = value;
     });
 
     expect(response).toMatchObject({ ok: true });
     expect(room.playback.sourceMemberId).toBe('member-a');
+  });
+
+  it('acknowledges stale playback updates without mutating room state', () => {
+    const { room, socket, playbackUpdateHandler } = createPlaybackUpdateTestContext();
+
+    let acceptedResponse: OperationResult<unknown> | null = null;
+    playbackUpdateHandler(createPlaybackUpdatePayload(1), (value) => {
+      acceptedResponse = value;
+    });
+
+    expect(acceptedResponse).toMatchObject({ ok: true });
+
+    let staleResponse: OperationResult<unknown> | null = null;
+    playbackUpdateHandler(createPlaybackUpdatePayload(1), (value) => {
+      staleResponse = value;
+    });
+
+    expect(staleResponse).toMatchObject({ ok: true });
+    expect(room.sequence).toBe(2);
+    expect(socket.emitted).toHaveLength(1);
   });
 
   it('rejects room leave without a bound socket session', () => {

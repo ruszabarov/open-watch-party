@@ -14,6 +14,7 @@ import type {
   OperationResult,
   PartySnapshot,
   PlaybackUpdate,
+  PlaybackUpdateDraft,
   RoomResponse,
   ServerToClientEvents,
 } from '@watch-party/shared';
@@ -137,13 +138,12 @@ export class PartySessionService {
   }
 
   async sendPlaybackUpdate(
-    update: PlaybackUpdate,
+    update: PlaybackUpdateDraft,
     isLocalRelay = false,
   ): Promise<ReturnType<typeof buildPopupState>> {
-    if (!this.state.session) {
-      if (isLocalRelay) {
-        return buildPopupState(this.state);
-      }
+    const session = this.state.session;
+    if (!session) {
+      if (isLocalRelay) return buildPopupState(this.state);
       throw new Error('Join or create a room first.');
     }
 
@@ -154,11 +154,12 @@ export class PartySessionService {
       return buildPopupState(this.state);
     }
 
-    await this.emitPlaybackUpdate(update);
-
-    if (!isLocalRelay) {
-      emitStateChanged(this.state);
-    }
+    const stampedUpdate = {
+      ...update,
+      clientSequence: await this.incrementPlaybackClientSequence(session),
+    };
+    const snapshot = await this.emitPlaybackUpdate(stampedUpdate);
+    this.applyPlaybackSnapshot(snapshot);
 
     return buildPopupState(this.state);
   }
@@ -257,12 +258,20 @@ export class PartySessionService {
   }
 
   private async applyRoomResponse(response: RoomResponse): Promise<void> {
+    const currentSession = this.state.session;
     this.state.room = response.snapshot;
     this.state.roomMemberId = response.memberId;
     this.state.session = {
       roomCode: response.snapshot.roomCode,
       memberId: response.memberId,
       serviceId: response.snapshot.serviceId,
+      playbackClientSequence:
+        currentSession &&
+        currentSession.roomCode === response.snapshot.roomCode &&
+        currentSession.memberId === response.memberId &&
+        currentSession.serviceId === response.snapshot.serviceId
+          ? currentSession.playbackClientSequence
+          : 0,
     };
     this.state.connectionStatus = 'connected';
     this.state.lastError = null;
@@ -319,6 +328,23 @@ export class PartySessionService {
         this.validateOutboundPayload(playbackUpdateRequestSchema, { update }),
       );
     return this.unwrapAckResponse(response);
+  }
+
+  private applyPlaybackSnapshot(snapshot: PartySnapshot): void {
+    this.state.room = snapshot;
+    this.state.lastWarning = null;
+    emitStateChanged(this.state);
+  }
+
+  private async incrementPlaybackClientSequence(
+    session: NonNullable<InternalState['session']>,
+  ): Promise<number> {
+    const nextClientSequence = session.playbackClientSequence + 1;
+    await this.settingsStore.persistSession({
+      ...session,
+      playbackClientSequence: nextClientSequence,
+    });
+    return nextClientSequence;
   }
 
   private unwrapAckResponse<T>(response: OperationResult<T>): T {

@@ -73,7 +73,6 @@ const roomCodeSchema = z
   .pipe(z.string().min(1));
 const memberIdSchema = z.string().trim().min(1);
 const mediaIdSchema = z.string().trim().min(1);
-const finiteTimestampSchema = z.number().finite();
 const positionSchema = z
   .number()
   .finite()
@@ -99,7 +98,7 @@ export const playbackUpdateSchema = z.object({
   title: titleSchema,
   positionSec: positionSchema,
   playing: z.boolean(),
-  issuedAt: finiteTimestampSchema,
+  clientSequence: z.number().int().finite().min(0),
 });
 
 export const createRoomRequestSchema = z.object({
@@ -124,6 +123,7 @@ export const playbackUpdateRequestSchema = z.object({
 
 export type PlaybackStateInput = z.output<typeof playbackStateInputSchema>;
 export type PlaybackUpdate = z.output<typeof playbackUpdateSchema>;
+export type PlaybackUpdateDraft = Omit<PlaybackUpdate, 'clientSequence'>;
 export type CreateRoomRequest = z.output<typeof createRoomRequestSchema>;
 export type JoinRoomRequest = z.output<typeof joinRoomRequestSchema>;
 export type LeaveRoomRequest = z.output<typeof leaveRoomRequestSchema>;

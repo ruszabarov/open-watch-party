@@ -10,6 +10,7 @@ export type SessionInfo = {
   roomCode: string;
   memberId: string;
   serviceId: ServiceId;
+  playbackClientSequence: number;
 };
 
 export type StoredSettings = {

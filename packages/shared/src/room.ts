@@ -18,6 +18,7 @@ export interface RoomState {
   serviceId: ServiceId;
   members: Map<string, PartyMember>;
   playback: PlaybackState;
+  lastPlaybackClientSequenceByMember: Map<string, number>;
   sequence: number;
   createdAt: number;
 }
@@ -64,6 +65,7 @@ export function createRoomState(
     serviceId: request.serviceId,
     members: new Map<string, PartyMember>(),
     playback,
+    lastPlaybackClientSequenceByMember: new Map<string, number>(),
     sequence,
     createdAt: now,
   };
@@ -87,6 +89,7 @@ export function upsertRoomMember(
 }
 
 export function removeRoomMember(room: RoomState, memberId: string): boolean {
+  room.lastPlaybackClientSequenceByMember.delete(memberId);
   return room.members.delete(memberId);
 }
 
@@ -101,6 +104,11 @@ export function applyPlaybackUpdate(
   now = Date.now(),
 ): PlaybackState {
   assertCanonicalWatchUrl(update.serviceId, update.mediaId);
+
+  const lastClientSequence = room.lastPlaybackClientSequenceByMember.get(memberId);
+  if (lastClientSequence !== undefined && update.clientSequence <= lastClientSequence) {
+    return room.playback;
+  }
 
   room.sequence += 1;
   const playback: PlaybackState = {
@@ -117,6 +125,7 @@ export function applyPlaybackUpdate(
     playback.title = sanitizeOptionalTitle(update.title);
   }
 
+  room.lastPlaybackClientSequenceByMember.set(memberId, update.clientSequence);
   room.playback = playback;
   return playback;
 }

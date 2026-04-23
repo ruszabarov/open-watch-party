@@ -21,7 +21,7 @@ export class SettingsStore {
     this.state.settings.memberName = normalizeMemberName(stored.memberName);
     this.state.settings.serverUrl = normalizeServerUrl(stored.serverUrl);
     this.state.session = stored.session;
-    this.state.roomMemberId = stored.session?.memberId ?? null;
+    this.state.roomMemberId = this.state.session?.memberId ?? null;
   }
 
   async updateSettings(next: { serverUrl: string; memberName: string }): Promise<void> {

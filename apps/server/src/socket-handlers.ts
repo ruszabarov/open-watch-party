@@ -303,7 +303,18 @@ function handlePlaybackUpdate(
   }
 
   try {
-    applyPlaybackUpdate(room, payload.update, session.memberId);
+    const previousPlayback = room.playback;
+    const playback = applyPlaybackUpdate(room, payload.update, session.memberId);
+
+    const snapshot = toPartySnapshot(room);
+    acknowledge({ ok: true, data: snapshot });
+
+    if (playback === previousPlayback) {
+      return;
+    }
+
+    touchRoomActivity(state, room);
+    socket.to(room.roomCode).emit('playback:state', snapshot);
   } catch (error) {
     acknowledge({
       ok: false,
@@ -311,12 +322,6 @@ function handlePlaybackUpdate(
     });
     return;
   }
-
-  touchRoomActivity(state, room);
-
-  const snapshot = toPartySnapshot(room);
-  acknowledge({ ok: true, data: snapshot });
-  socket.to(room.roomCode).emit('playback:state', snapshot);
 }
 
 function getSocketSession(state: RealtimeState, socketId: string): SessionRecord | undefined {

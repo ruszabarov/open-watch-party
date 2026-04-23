@@ -1,4 +1,4 @@
-import type { PlaybackUpdate } from '@watch-party/shared';
+import type { PlaybackUpdateDraft } from '@watch-party/shared';
 import type { ProxyServiceKey } from '@webext-core/proxy-service';
 
 import type { PopupState } from '../protocol/extension';
@@ -12,7 +12,7 @@ export interface PopupBackgroundService {
   createRoom(): Promise<PopupState>;
   joinRoom(payload: { roomCode: string }): Promise<PopupState>;
   leaveRoom(): Promise<PopupState>;
-  sendPlaybackUpdate(payload: PlaybackUpdate): Promise<PopupState>;
+  sendPlaybackUpdate(payload: PlaybackUpdateDraft): Promise<PopupState>;
 }
 
 export const POPUP_BACKGROUND_SERVICE_KEY =
