@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const SUPPORTED_SERVICES = ['netflix', 'youtube'] as const;
 export const MAX_MEMBER_NAME_LENGTH = 64;
 export const MAX_TITLE_LENGTH = 256;
+export const MAX_PLAYBACK_POSITION_SEC = 48 * 60 * 60;
 
 const CONTROL_CHARACTERS_PATTERN = /[\u0000-\u001F\u007F]+/g;
 
@@ -73,7 +74,11 @@ const roomCodeSchema = z
 const memberIdSchema = z.string().trim().min(1);
 const mediaIdSchema = z.string().trim().min(1);
 const finiteTimestampSchema = z.number().finite();
-const positionSchema = z.number().finite().min(0);
+const positionSchema = z
+  .number()
+  .finite()
+  .min(0)
+  .max(MAX_PLAYBACK_POSITION_SEC);
 const memberNameSchema = z.string().transform(sanitizeMemberName);
 const titleSchema = z
   .string()

@@ -8,6 +8,7 @@ import {
   joinRoomRequestSchema,
   leaveRoomRequestSchema,
   MAX_MEMBER_NAME_LENGTH,
+  MAX_PLAYBACK_POSITION_SEC,
   MAX_TITLE_LENGTH,
   playbackUpdateRequestSchema,
   normalizeRoomCode,
@@ -263,6 +264,20 @@ describe('protocol schemas', () => {
     expect(result.success).toBe(false);
   });
 
+  it('rejects playback updates with oversized positions', () => {
+    const result = playbackUpdateRequestSchema.safeParse({
+      update: {
+        serviceId: 'youtube',
+        mediaId: 'abc123',
+        playing: true,
+        positionSec: 1e308,
+        issuedAt: 1_000,
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it('rejects unexpected identity fields on leave requests', () => {
     const result = leaveRoomRequestSchema.safeParse({
       roomCode: 'AB12CD',
@@ -277,5 +292,27 @@ describe('protocol schemas', () => {
     expect(sanitizeMemberName(` ${'B'.repeat(MAX_MEMBER_NAME_LENGTH + 5)} `)).toBe(
       'B'.repeat(MAX_MEMBER_NAME_LENGTH),
     );
+  });
+
+  it('caps resolved playback positions to the shared maximum', () => {
+    const room = createRoomState(
+      'ROOM08',
+      {
+        memberId: 'member-a',
+        memberName: 'Member A',
+        serviceId: 'netflix',
+        initialPlayback: {
+          serviceId: 'netflix',
+          mediaId: '123',
+          title: 'Example',
+          positionSec: MAX_PLAYBACK_POSITION_SEC - 1,
+          playing: true,
+        },
+      },
+      1_000,
+    );
+
+    const playback = resolvePlaybackState(room.playback, 5_000);
+    expect(playback.positionSec).toBe(MAX_PLAYBACK_POSITION_SEC);
   });
 });

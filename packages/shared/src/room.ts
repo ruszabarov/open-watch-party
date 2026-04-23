@@ -6,7 +6,11 @@ import type {
   PlaybackUpdate,
   ServiceId,
 } from './protocol';
-import { sanitizeMemberName, sanitizeOptionalTitle } from './protocol';
+import {
+  sanitizeMemberName,
+  sanitizeOptionalTitle,
+  MAX_PLAYBACK_POSITION_SEC as maxPlaybackPositionSec,
+} from './protocol';
 import { buildCanonicalWatchUrl } from './services';
 
 export interface RoomState {
@@ -159,7 +163,7 @@ function normalizePosition(value: number): number {
     return 0;
   }
 
-  return Math.max(0, Number(value.toFixed(3)));
+  return Math.min(maxPlaybackPositionSec, Math.max(0, Number(value.toFixed(3))));
 }
 
 function assertCanonicalWatchUrl(serviceId: ServiceId, mediaId: string): void {
