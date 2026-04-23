@@ -213,7 +213,7 @@ function handleRoomCreate(
 
   const snapshot = toPartySnapshot(room);
   acknowledge({ ok: true, data: { memberId: payload.memberId, snapshot } });
-  io.to(room.roomCode).emit('room:state', snapshot);
+  socket.to(room.roomCode).emit('room:state', snapshot);
 }
 
 function handleRoomJoin(
@@ -243,7 +243,7 @@ function handleRoomJoin(
 
   const snapshot = toPartySnapshot(room);
   acknowledge({ ok: true, data: { memberId: payload.memberId, snapshot } });
-  io.to(payload.roomCode).emit('room:state', snapshot);
+  socket.to(payload.roomCode).emit('room:state', snapshot);
 }
 
 function handleRoomLeave(

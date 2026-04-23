@@ -382,8 +382,9 @@ describe('socket handlers', () => {
     expect(successfulResponse.data.snapshot.playback.title).toBe('T'.repeat(MAX_TITLE_LENGTH));
     expect(state.roomStore.size()).toBe(1);
     expect(socket.joinedRooms).toEqual([successfulResponse.data.snapshot.roomCode]);
-    expect(io.emitted).toHaveLength(1);
-    expect(io.emitted[0]?.event).toBe('room:state');
+    expect(io.emitted).toHaveLength(0);
+    expect(socket.emitted).toHaveLength(1);
+    expect(socket.emitted[0]?.event).toBe('room:state');
   });
 
   it('rejects room creation when the room cap is reached', () => {
@@ -476,6 +477,47 @@ describe('socket handlers', () => {
     );
 
     expect(state.roomStore.get('ROOM01')?.lastActivity).toBe(Date.now());
+  });
+
+  it('broadcasts room join state only to the other sockets in the room', () => {
+    const io = new FakeIo();
+    const socket = new FakeSocket('socket-join');
+    const state = createRealtimeState();
+    const room = createRoomState('ROOM01', {
+      memberId: 'member-a',
+      memberName: 'Member A',
+      serviceId: 'youtube',
+      initialPlayback: {
+        serviceId: 'youtube',
+        mediaId: 'abc123',
+        title: 'Clip',
+        playing: true,
+        positionSec: 5,
+      },
+    });
+
+    upsertRoomMember(room, 'member-a', 'Member A');
+    state.roomStore.set({ room, lastActivity: Date.now() });
+
+    createConnectionHandler(io as never, state)(socket as never);
+
+    const roomJoinHandler = socket.handlers.get('room:join') as (
+      payload: unknown,
+      acknowledge: (response: OperationResult<RoomResponse>) => void,
+    ) => void;
+
+    roomJoinHandler(
+      {
+        roomCode: 'ROOM01',
+        memberId: 'member-b',
+        memberName: 'Member B',
+      },
+      () => undefined,
+    );
+
+    expect(io.emitted).toHaveLength(0);
+    expect(socket.emitted).toHaveLength(1);
+    expect(socket.emitted[0]?.event).toBe('room:state');
   });
 
   it('disconnects the prior socket when the same member reconnects', () => {
