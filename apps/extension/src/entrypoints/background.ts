@@ -20,6 +20,7 @@ import {
   type ServiceContentContext,
 } from '../utils/protocol/extension';
 import { onMessage, sendMessage } from '../utils/protocol/messaging';
+import { getErrorMessage } from '../utils/errors';
 import { findPluginByUrl, getPlugin } from '../utils/services/registry';
 import type { ServicePlugin } from '../utils/services/types';
 type BrowserTab = Parameters<Parameters<typeof browser.tabs.onUpdated.addListener>[0]>[2];
@@ -709,14 +710,6 @@ function normalizeMemberName(value: string): string {
 
 function createGuestName(): string {
   return `Guest ${Math.floor(Math.random() * 900 + 100)}`;
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return 'Unexpected error.';
 }
 
 /**

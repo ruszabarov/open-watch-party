@@ -6,6 +6,7 @@
     type PopupState,
   } from '../../utils/protocol/extension';
   import { sendMessage, type PopupRequest } from '../../utils/protocol/messaging';
+  import { getErrorMessage } from '../../utils/errors';
 
   import Header from '../../components/popup/Header.svelte';
   import Lobby from '../../components/popup/Lobby.svelte';
@@ -19,26 +20,24 @@
   let isBusy = $state(false);
   let settingsOpen = $state(false);
 
+  function setLastError(error: unknown): void {
+    popup = { ...popup, lastError: getErrorMessage(error, 'Unexpected popup error.') };
+  }
+
   async function syncState(): Promise<void> {
     try {
       popup = await sendBackgroundRequest({ type: 'party:get-state' });
     } catch (error) {
-      popup = { ...popup, lastError: getErrorMessage(error) };
-    }
-  }
-
-  async function sendRequest(request: PopupRequest): Promise<PopupState> {
-    try {
-      return await sendBackgroundRequest(request);
-    } catch (error) {
-      return { ...popup, lastError: getErrorMessage(error) };
+      setLastError(error);
     }
   }
 
   async function perform(request: PopupRequest): Promise<void> {
     isBusy = true;
     try {
-      popup = await sendRequest(request);
+      popup = await sendBackgroundRequest(request);
+    } catch (error) {
+      setLastError(error);
     } finally {
       isBusy = false;
     }
@@ -68,11 +67,6 @@
 
   function dismissWarning(): void {
     popup = { ...popup, lastWarning: null };
-  }
-
-  function getErrorMessage(error: unknown): string {
-    if (error instanceof Error) return error.message;
-    return 'Unexpected popup error.';
   }
 
   function toggleSettings(): void {
