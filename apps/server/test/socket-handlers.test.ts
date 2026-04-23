@@ -12,6 +12,9 @@ type RecordedEmission = {
 
 class FakeIo {
   readonly emitted: RecordedEmission[] = [];
+  readonly sockets = {
+    sockets: new Map<string, { disconnect: (close?: boolean) => void }>(),
+  };
 
   to(room: string) {
     return {
@@ -25,7 +28,9 @@ class FakeIo {
 class FakeSocket {
   readonly handlers = new Map<string, Function>();
   readonly joinedRooms: string[] = [];
+  readonly leftRooms: string[] = [];
   readonly emitted: RecordedEmission[] = [];
+  disconnectCalls: boolean[] = [];
 
   constructor(readonly id: string) {}
 
@@ -37,12 +42,20 @@ class FakeSocket {
     this.joinedRooms.push(room);
   }
 
+  leave(room: string): void {
+    this.leftRooms.push(room);
+  }
+
   to(room: string) {
     return {
       emit: (event: string, payload: unknown) => {
         this.emitted.push({ room, event, payload });
       },
     };
+  }
+
+  disconnect(close?: boolean): void {
+    this.disconnectCalls.push(close ?? false);
   }
 }
 
@@ -463,6 +476,133 @@ describe('socket handlers', () => {
     );
 
     expect(state.roomStore.get('ROOM01')?.lastActivity).toBe(Date.now());
+  });
+
+  it('disconnects the prior socket when the same member reconnects', () => {
+    const io = new FakeIo();
+    const priorSocket = new FakeSocket('socket-old');
+    const nextSocket = new FakeSocket('socket-new');
+    const state = createRealtimeState();
+    const room = createRoomState('ROOM01', {
+      memberId: 'member-a',
+      memberName: 'Member A',
+      serviceId: 'youtube',
+      initialPlayback: {
+        serviceId: 'youtube',
+        mediaId: 'abc123',
+        title: 'Clip',
+        playing: true,
+        positionSec: 5,
+      },
+    });
+
+    upsertRoomMember(room, 'member-a', 'Member A');
+    state.roomStore.set({ room, lastActivity: Date.now() });
+    state.sessionsBySocket.set(priorSocket.id, {
+      socketId: priorSocket.id,
+      roomCode: room.roomCode,
+      memberId: 'member-a',
+    });
+    state.activeSocketByMember.set(`${room.roomCode}:member-a`, priorSocket.id);
+    io.sockets.sockets.set(priorSocket.id, priorSocket as never);
+
+    createConnectionHandler(io as never, state)(nextSocket as never);
+
+    const roomJoinHandler = nextSocket.handlers.get('room:join') as (
+      payload: unknown,
+      acknowledge: (response: OperationResult<RoomResponse>) => void,
+    ) => void;
+
+    let response: OperationResult<RoomResponse> | null = null;
+    roomJoinHandler(
+      {
+        roomCode: room.roomCode,
+        memberId: 'member-a',
+        memberName: 'Member A',
+      },
+      (value) => {
+        response = value;
+      },
+    );
+
+    expect(response).toMatchObject({ ok: true });
+    expect(priorSocket.disconnectCalls).toEqual([true]);
+    expect(state.sessionsBySocket.has(priorSocket.id)).toBe(false);
+    expect(state.sessionsBySocket.get(nextSocket.id)).toMatchObject({
+      socketId: nextSocket.id,
+      roomCode: room.roomCode,
+      memberId: 'member-a',
+    });
+    expect(state.activeSocketByMember.get(`${room.roomCode}:member-a`)).toBe(nextSocket.id);
+  });
+
+  it('leaves the prior room before joining a new room on the same socket', () => {
+    const io = new FakeIo();
+    const socket = new FakeSocket('socket-5');
+    const state = createRealtimeState();
+    const firstRoom = createRoomState('ROOM01', {
+      memberId: 'member-a',
+      memberName: 'Member A',
+      serviceId: 'youtube',
+      initialPlayback: {
+        serviceId: 'youtube',
+        mediaId: 'abc123',
+        title: 'Clip',
+        playing: true,
+        positionSec: 5,
+      },
+    });
+    const secondRoom = createRoomState('ROOM02', {
+      memberId: 'member-b',
+      memberName: 'Member B',
+      serviceId: 'youtube',
+      initialPlayback: {
+        serviceId: 'youtube',
+        mediaId: 'def456',
+        title: 'Another Clip',
+        playing: false,
+        positionSec: 0,
+      },
+    });
+
+    upsertRoomMember(firstRoom, 'member-a', 'Member A');
+    upsertRoomMember(secondRoom, 'member-b', 'Member B');
+    state.roomStore.set({ room: firstRoom, lastActivity: Date.now() });
+    state.roomStore.set({ room: secondRoom, lastActivity: Date.now() });
+    state.sessionsBySocket.set(socket.id, {
+      socketId: socket.id,
+      roomCode: firstRoom.roomCode,
+      memberId: 'member-a',
+    });
+    state.activeSocketByMember.set(`${firstRoom.roomCode}:member-a`, socket.id);
+
+    createConnectionHandler(io as never, state)(socket as never);
+
+    const roomJoinHandler = socket.handlers.get('room:join') as (
+      payload: unknown,
+      acknowledge: (response: OperationResult<RoomResponse>) => void,
+    ) => void;
+
+    let response: OperationResult<RoomResponse> | null = null;
+    roomJoinHandler(
+      {
+        roomCode: secondRoom.roomCode,
+        memberId: 'member-b',
+        memberName: 'Member B',
+      },
+      (value) => {
+        response = value;
+      },
+    );
+
+    expect(response).toMatchObject({ ok: true });
+    expect(socket.leftRooms).toEqual([firstRoom.roomCode]);
+    expect(socket.joinedRooms).toEqual([secondRoom.roomCode]);
+    expect(state.sessionsBySocket.get(socket.id)).toMatchObject({
+      socketId: socket.id,
+      roomCode: secondRoom.roomCode,
+      memberId: 'member-b',
+    });
   });
 
   it('refreshes last activity on playback updates', () => {

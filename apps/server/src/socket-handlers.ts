@@ -209,8 +209,7 @@ function handleRoomCreate(
   upsertRoomMember(room, payload.memberId, payload.memberName);
   touchRoomActivity(state, room);
 
-  bindMemberToSocket(state, socket.id, room.roomCode, payload.memberId);
-  socket.join(room.roomCode);
+  bindSocketToRoom(io, state, socket, room.roomCode, payload.memberId);
 
   const snapshot = toPartySnapshot(room);
   acknowledge({ ok: true, data: { memberId: payload.memberId, snapshot } });
@@ -240,8 +239,7 @@ function handleRoomJoin(
   upsertRoomMember(room, payload.memberId, payload.memberName);
   touchRoomActivity(state, room);
 
-  bindMemberToSocket(state, socket.id, payload.roomCode, payload.memberId);
-  socket.join(payload.roomCode);
+  bindSocketToRoom(io, state, socket, payload.roomCode, payload.memberId);
 
   const snapshot = toPartySnapshot(room);
   acknowledge({ ok: true, data: { memberId: payload.memberId, snapshot } });
@@ -325,21 +323,30 @@ function getSocketSession(state: RealtimeState, socketId: string): SessionRecord
   return state.sessionsBySocket.get(socketId);
 }
 
-function bindMemberToSocket(
+function bindSocketToRoom(
+  io: RealtimeServer,
   state: RealtimeState,
-  socketId: string,
+  socket: ConnectionSocket,
   roomCode: string,
   memberId: string,
 ): void {
+  const priorSession = state.sessionsBySocket.get(socket.id);
+  if (priorSession && priorSession.roomCode !== roomCode) {
+    socket.leave(priorSession.roomCode);
+  }
+
+  const socketId = socket.id;
   const key = memberKey(roomCode, memberId);
   const priorSocketId = state.activeSocketByMember.get(key);
 
   if (priorSocketId && priorSocketId !== socketId) {
+    io.sockets.sockets.get(priorSocketId)?.disconnect(true);
     state.sessionsBySocket.delete(priorSocketId);
   }
 
   state.activeSocketByMember.set(key, socketId);
   state.sessionsBySocket.set(socketId, { socketId, roomCode, memberId });
+  socket.join(roomCode);
 }
 
 function removeSocketSession(state: RealtimeState, socketId: string): void {
