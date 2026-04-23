@@ -4,26 +4,9 @@ import {
   type ApplySnapshotResult,
   type ServiceContentContext,
 } from '../protocol/extension';
+import type { MediaLocator } from './media-locators';
+import { createHtml5PlaybackController, type PlaybackController } from './playback-controllers';
 import type { StreamingServiceAdapter } from './types';
-
-const SEEK_CORRECTION_THRESHOLD_SEC = 1.5;
-
-export interface DomVideoAdapterConfig {
-  readonly serviceId: ServiceId;
-  /** Selector for the main `<video>` element. Defaults to `video`. */
-  readonly videoSelector?: string;
-  /**
-   * Parse the media id out of `window.location`. Returning `undefined`
-   * means the current page is not a watch page (popup will show `issueWhenNoMedia`).
-   */
-  matchMediaId(location: Location): string | undefined;
-  /** Human-readable title shown in the popup. Defaults to `document.title`. */
-  matchMediaTitle?(doc: Document): string;
-  /** Shown when the user is on the service but not on a playable page. */
-  readonly issueWhenNoMedia: string;
-  /** Shown when a watch URL matched but the `<video>` element isn't ready. */
-  readonly issueWhenPlayerNotReady: string;
-}
 
 // Events that describe any meaningful change to the current media:
 //   play/pause/seeked — user-driven playback state.
@@ -37,6 +20,16 @@ const VIDEO_EVENTS = [
   'emptied',
   'ended',
 ] as const;
+
+export interface DomVideoAdapterConfig {
+  readonly serviceId: ServiceId;
+  readonly locator: MediaLocator;
+  readonly playbackController?: PlaybackController;
+  /** Shown when the user is on the service but not on a playable page. */
+  readonly issueWhenNoMedia: string;
+  /** Shown when a watch URL matched but the `<video>` element isn't ready. */
+  readonly issueWhenPlayerNotReady: string;
+}
 
 interface DomPlaybackState {
   readonly video: HTMLVideoElement | null;
@@ -57,18 +50,14 @@ interface PendingAppliedPlaybackState {
   readonly positionSec: number;
 }
 
-function buildPlaybackState(
-  getVideo: () => HTMLVideoElement | null,
-  matchMediaId: (location: Location) => string | undefined,
-  getMediaTitle: () => string,
-): DomPlaybackState {
-  const video = getVideo();
-  const mediaId = matchMediaId(window.location);
+function buildPlaybackState(locator: MediaLocator): DomPlaybackState {
+  const video = locator.getVideo();
+  const mediaId = locator.getMediaId(window.location);
 
   return {
     video,
     mediaId,
-    mediaTitle: getMediaTitle(),
+    mediaTitle: locator.getMediaTitle(document),
     isWatchPage: Boolean(mediaId),
   };
 }
@@ -141,7 +130,7 @@ function matchesPendingAppliedPlaybackState(
 
   return (
     Math.abs(pendingState.positionSec - context.positionSec) <=
-    SEEK_CORRECTION_THRESHOLD_SEC
+    1.5
   );
 }
 
@@ -174,37 +163,6 @@ function getSnapshotPlaybackTarget(
   };
 }
 
-function syncVideoPosition(
-  video: HTMLVideoElement,
-  targetPositionSec: number,
-): void {
-  if (Math.abs(video.currentTime - targetPositionSec) > SEEK_CORRECTION_THRESHOLD_SEC) {
-    video.currentTime = targetPositionSec;
-  }
-}
-
-async function syncVideoPlaybackState(
-  video: HTMLVideoElement,
-  shouldPlay: boolean,
-): Promise<{ ok: true } | { ok: false; reason: string }> {
-  if (shouldPlay && video.paused) {
-    try {
-      await video.play();
-    } catch {
-      return {
-        ok: false,
-        reason: 'Browser blocked playback start on this tab.',
-      };
-    }
-  }
-
-  if (!shouldPlay && !video.paused) {
-    video.pause();
-  }
-
-  return { ok: true };
-}
-
 function observeUrlChanges(onChange: () => void): () => void {
   const { navigation } = window;
   navigation.addEventListener('navigatesuccess', onChange);
@@ -215,24 +173,19 @@ function observeUrlChanges(onChange: () => void): () => void {
 }
 
 /**
- * Generic adapter for any service that exposes a plain HTML5 `<video>` element
- * on its watch page. Fully event-driven — no polling. It observes:
- *   - DOM structure (the <video> being added/removed/swapped by an SPA),
- *   - `<title>` text (so the popup label stays in sync),
- *   - URL changes via the Navigation API,
- *   - the video element's own playback events.
- * Services only need to supply matchers + UI copy.
+ * Generic adapter for services whose media state can be described by a
+ * locator (discovery + observation root) and a playback controller (command
+ * transport). The adapter owns the shared event wiring, context emission, and
+ * snapshot bookkeeping; services only swap the pieces that truly vary.
  */
 export function createDomVideoAdapter(
   config: DomVideoAdapterConfig,
 ): StreamingServiceAdapter {
-  const videoSelector = config.videoSelector ?? 'video';
-  const getVideo = () => document.querySelector<HTMLVideoElement>(videoSelector);
-  const getMediaTitle = () =>
-    config.matchMediaTitle?.(document) ?? document.title;
+  const playbackController =
+    config.playbackController ?? createHtml5PlaybackController();
 
   const readPlaybackState = (): DomPlaybackState =>
-    buildPlaybackState(getVideo, config.matchMediaId, getMediaTitle);
+    buildPlaybackState(config.locator);
 
   const getContextFromState = (state: DomPlaybackState): ServiceContentContext =>
     buildContextFromState(state, config);
@@ -270,6 +223,7 @@ export function createDomVideoAdapter(
     observe(onContext, onPlaybackUpdate) {
       let activeVideo: HTMLVideoElement | null = null;
       let lastContext: ServiceContentContext | null = null;
+      let structureObservedRoot: Node | null = null;
       let stopped = false;
 
       const emitContext = (context: ServiceContentContext) => {
@@ -314,9 +268,22 @@ export function createDomVideoAdapter(
         }
       };
 
+      const structureObserver = new MutationObserver(scheduleRefresh);
+      const bindStructureRoot = () => {
+        const nextRoot = config.locator.getStructureRoot() ?? document.body;
+        if (!nextRoot || nextRoot === structureObservedRoot) return;
+        structureObserver.disconnect();
+        structureObserver.observe(nextRoot, {
+          childList: true,
+          subtree: true,
+        });
+        structureObservedRoot = nextRoot;
+      };
+
       const refresh = () => {
         if (stopped) return;
         const state = readPlaybackState();
+        bindStructureRoot();
         bindActiveVideo(state.video);
         emitContext(getContextFromState(state));
       };
@@ -325,7 +292,7 @@ export function createDomVideoAdapter(
       // microtask so refreshes run promptly without depending on paint or
       // timer scheduling.
       let refreshQueued = false;
-      const scheduleRefresh = () => {
+      function scheduleRefresh() {
         if (stopped || refreshQueued) return;
         refreshQueued = true;
         queueMicrotask(() => {
@@ -333,15 +300,11 @@ export function createDomVideoAdapter(
           if (stopped) return;
           refresh();
         });
-      };
+      }
 
-      // SPA re-renders (Netflix, YouTube) swap or reparent the <video>
-      // element. Subtree childList catches these regardless of depth.
-      const structureObserver = new MutationObserver(scheduleRefresh);
-      structureObserver.observe(document.documentElement, {
-        childList: true,
-        subtree: true,
-      });
+      // SPA re-renders swap or reparent the <video> element. Subtree childList
+      // catches these regardless of depth once the correct observation root is
+      // bound for the current service.
 
       // Title edits don't always show up as structural changes (a script
       // can just reassign `document.title`), so observe <head> for
@@ -385,12 +348,12 @@ export function createDomVideoAdapter(
         return target;
       }
 
-      syncVideoPosition(target.video, target.targetPositionSec);
-
-      const playbackResult = await syncVideoPlaybackState(
-        target.video,
-        target.shouldPlay,
-      );
+      const playbackResult = await playbackController.apply({
+        video: target.video,
+        targetPositionSec: target.targetPositionSec,
+        shouldPlay: target.shouldPlay,
+        context,
+      });
       if (!playbackResult.ok) {
         return {
           applied: false,

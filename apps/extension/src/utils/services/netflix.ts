@@ -1,4 +1,5 @@
 import { createDomVideoAdapter } from './dom-video';
+import { createSelectorMediaLocator } from './media-locators';
 import type { ServicePlugin } from './types';
 
 const NETFLIX_HOST_RE = /(^|\.)netflix\.com$/;
@@ -35,9 +36,11 @@ export const NETFLIX_SERVICE: ServicePlugin = {
   createAdapter: () =>
     createDomVideoAdapter({
       serviceId: 'netflix',
-      matchMediaId: (loc) => extractNetflixMediaId(new URL(loc.href)),
-      matchMediaTitle: (doc) =>
-        doc.title.replace(NETFLIX_TITLE_SUFFIX, '').trim() || 'Netflix',
+      locator: createSelectorMediaLocator({
+        getMediaId: (loc) => extractNetflixMediaId(new URL(loc.href)),
+        getMediaTitle: (doc) =>
+          doc.title.replace(NETFLIX_TITLE_SUFFIX, '').trim() || 'Netflix',
+      }),
       issueWhenNoMedia: 'Open a Netflix watch page to start a party.',
       issueWhenPlayerNotReady: 'Netflix player is still loading.',
     }),
