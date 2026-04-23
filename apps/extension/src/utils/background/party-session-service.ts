@@ -138,10 +138,10 @@ export class PartySessionService {
   async sendPlaybackUpdate(
     update: PlaybackUpdate,
     isLocalRelay = false,
-  ): Promise<ReturnType<typeof buildPopupState> | { ok: false }> {
+  ): Promise<ReturnType<typeof buildPopupState>> {
     if (!this.state.session) {
       if (isLocalRelay) {
-        return { ok: false };
+        return buildPopupState(this.state);
       }
       throw new Error('Join or create a room first.');
     }

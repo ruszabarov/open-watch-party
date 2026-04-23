@@ -44,9 +44,6 @@ export function createPopupBackgroundService(
     leaveRoom: () => handlePopupRequest(() => partySessionService.leaveRoom()),
 
     sendPlaybackUpdate: (payload: Parameters<PartySessionService['sendPlaybackUpdate']>[0]) =>
-      handlePopupRequest(async () => {
-        const result = await partySessionService.sendPlaybackUpdate(payload);
-        return 'ok' in result ? buildPopupState(state) : result;
-      }),
+      handlePopupRequest(() => partySessionService.sendPlaybackUpdate(payload)),
   };
 }
