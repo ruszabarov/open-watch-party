@@ -14,18 +14,14 @@ import {
 import {
   DEFAULT_SERVER_URL,
   type ActiveTabSummary,
-  type PopupCommand,
+  type ApplySnapshotResult,
+  type BackgroundBroadcast,
   type PopupState,
   type ServiceContentContext,
 } from '../lib/protocol/extension';
-import {
-  registerContentPortHandlers,
-  type ContentPortRegistry,
-} from '../lib/protocol/content-port';
-import { registerPopupPortHandlers } from '../lib/protocol/popup-port';
+import { onMessage, sendMessage } from '../lib/protocol/messaging';
 import { findPluginByUrl, getPlugin } from '../lib/services/registry';
 import type { ServicePlugin } from '../lib/services/types';
-
 type BrowserTab = Parameters<Parameters<typeof browser.tabs.onUpdated.addListener>[0]>[2];
 
 type SessionInfo = {
@@ -73,35 +69,11 @@ const state: InternalState = {
 
 const contentContexts = new Map<number, ServiceContentContext>();
 
-// Installed synchronously in main() so the listener is active before Chrome
-// delivers the connect/tab events that woke the service worker.
-let popupPorts: ReturnType<typeof registerPopupPortHandlers>;
-let contentPorts: ContentPortRegistry;
-
 export default defineBackground(() => {
-  popupPorts = registerPopupPortHandlers({
-    getState: buildPopupState,
-    handleCommand: handlePopupCommand,
-  });
-
-  contentPorts = registerContentPortHandlers({
-    onContext: handleContentContext,
-    onPlaybackUpdate: handleContentPlaybackUpdate,
-    onRequestSync: handleContentRequestSync,
-    onDisconnect: handleContentDisconnect,
-  });
-
-  browser.tabs.onActivated.addListener(async () => {
-    await refreshActiveTab();
-  });
-
-  browser.tabs.onUpdated.addListener(async (_tabId, changeInfo) => {
-    // If the controlled tab navigates off-service, its content script unloads
-    // and its port disconnects — handleContentDisconnect takes it from there.
-    if (changeInfo.status === 'complete' || changeInfo.url) {
-      await refreshActiveTab();
-    }
-  });
+  // Must run synchronously so the service worker installs its
+  // `runtime.onMessage` / `tabs.*` listeners before Chrome delivers
+  // the event that woke it up. Anything async happens in the background.
+  registerEventHandlers();
 
   void (async () => {
     await hydrateState();
@@ -110,107 +82,122 @@ export default defineBackground(() => {
   })();
 });
 
-// ---------------------------------------------------------------------------
-// Popup command handling
-// ---------------------------------------------------------------------------
+function registerEventHandlers(): void {
+  onMessage('party:get-state', async () => {
+    return handlePopupRequest(async () => {
+      await refreshActiveTab(false);
+      return buildPopupState();
+    });
+  });
 
-async function handlePopupCommand(command: PopupCommand): Promise<void> {
-  switch (command.type) {
-    case 'settings:update':
+  onMessage('settings:update', ({ data }) => {
+    return handlePopupRequest(async () => {
       state.settings = {
-        serverUrl: normalizeServerUrl(command.payload.serverUrl),
-        memberName: normalizeMemberName(command.payload.memberName),
+        serverUrl: normalizeServerUrl(data.serverUrl),
+        memberName: normalizeMemberName(data.memberName),
       };
       await persistState();
       emitStateChanged();
-      return;
+      return buildPopupState();
+    });
+  });
 
-    case 'room:create':
+  onMessage('room:create', () => {
+    return handlePopupRequest(async () => {
       await refreshActiveTab(false);
-      try {
-        await createRoom();
-      } catch (error) {
-        state.lastError = getErrorMessage(error);
-        emitStateChanged();
-        throw error;
-      }
-      return;
+      return createRoom();
+    });
+  });
 
-    case 'room:join':
+  onMessage('room:join', ({ data }) => {
+    return handlePopupRequest(async () => {
       await refreshActiveTab(false);
-      try {
-        await joinRoom(command.payload.roomCode);
-      } catch (error) {
-        state.lastError = getErrorMessage(error);
-        emitStateChanged();
-        throw error;
+      return joinRoom(data.roomCode);
+    });
+  });
+
+  onMessage('room:leave', () => handlePopupRequest(leaveRoom));
+
+  onMessage('room:playback-update', ({ data }) => {
+    return handlePopupRequest(() => sendPlaybackUpdate(data));
+  });
+
+  onMessage('content:context', ({ data, sender }) => {
+    if (sender.tab?.id != null) {
+      contentContexts.set(sender.tab.id, data);
+
+      const isControlledTab = state.controlledTabId === sender.tab.id;
+      const isActiveTab = state.activeTab.tabId === sender.tab.id;
+      if (isControlledTab || isActiveTab) {
+        state.contentContext = data;
       }
-      return;
+    }
 
-    case 'room:leave':
-      await leaveRoom();
-      return;
-
-    case 'room:playback-update':
-      await sendPlaybackUpdate(command.payload);
-      return;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Content-script event handling
-// ---------------------------------------------------------------------------
-
-function handleContentContext(tabId: number, context: ServiceContentContext): void {
-  contentContexts.set(tabId, context);
-
-  // Only visible state is `state.contentContext`, which mirrors the active or
-  // controlled tab. Pushes from background tabs don't affect the popup UI.
-  if (tabId !== state.controlledTabId && tabId !== state.activeTab.tabId) {
-    return;
-  }
-
-  state.contentContext = context;
-  emitStateChanged();
-}
-
-function handleContentPlaybackUpdate(tabId: number, update: PlaybackUpdate): void {
-  if (tabId !== state.controlledTabId) return;
-  void sendPlaybackUpdate(update, true).catch((error) => {
-    state.lastError = getErrorMessage(error);
     emitStateChanged();
+  });
+
+  onMessage('content:playback-update', async ({ data, sender }) => {
+    if (sender.tab?.id !== state.controlledTabId) {
+      return;
+    }
+
+    await handlePopupRequest(() => sendPlaybackUpdate(data, true), false);
+  });
+
+  onMessage('content:request-sync', async ({ sender }) => {
+    if (sender.tab?.id != null && state.room) {
+      state.controlledTabId ??= sender.tab.id;
+      await applySnapshotToControlledTab();
+    }
+  });
+
+  browser.tabs.onActivated.addListener(async () => {
+    await refreshActiveTab();
+  });
+
+  browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+    if (changeInfo.status === 'complete' || changeInfo.url) {
+      await refreshActiveTab();
+    }
+
+    if (tabId === state.controlledTabId && tab.url) {
+      const sessionPlugin = state.session ? getPlugin(state.session.serviceId) : null;
+      if (sessionPlugin && !sessionPlugin.matchesService(tab.url)) {
+        state.lastWarning = `The controlled tab left ${sessionPlugin.descriptor.label}.`;
+        emitStateChanged();
+      }
+    }
+  });
+
+  browser.tabs.onRemoved.addListener((tabId) => {
+    contentContexts.delete(tabId);
+
+    if (state.controlledTabId === tabId) {
+      const sessionPlugin = state.session ? getPlugin(state.session.serviceId) : null;
+      state.controlledTabId = null;
+      state.contentContext = null;
+      state.lastWarning = sessionPlugin
+        ? `The controlled ${sessionPlugin.descriptor.label} tab was closed.`
+        : 'The controlled tab was closed.';
+      emitStateChanged();
+    }
   });
 }
 
-function handleContentRequestSync(tabId: number): void {
-  if (!state.room) return;
-  state.controlledTabId ??= tabId;
-  void applySnapshotToControlledTab();
-}
-
-function handleContentDisconnect(tabId: number): void {
-  contentContexts.delete(tabId);
-
-  const wasControlled = state.controlledTabId === tabId;
-  const wasActive = state.activeTab.tabId === tabId;
-
-  if (wasControlled) {
-    const sessionPlugin = state.session ? getPlugin(state.session.serviceId) : null;
-    state.controlledTabId = null;
-    state.lastWarning = sessionPlugin
-      ? `Lost the controlled ${sessionPlugin.descriptor.label} tab.`
-      : 'Lost the controlled tab.';
-  }
-
-  if (wasControlled || wasActive) {
-    state.contentContext = null;
-    emitStateChanged();
+async function handlePopupRequest<T>(
+  handler: () => Promise<T>,
+  emitErrorState = true,
+): Promise<T | PopupState> {
+  try {
+    return await handler();
+  } catch (error) {
+    state.lastError = getErrorMessage(error);
+    if (emitErrorState) {
+      emitStateChanged();
+    }
+    return buildPopupState();
   }
 }
-
-// ---------------------------------------------------------------------------
-// State hydration and tab bookkeeping
-// ---------------------------------------------------------------------------
 
 async function hydrateState(): Promise<void> {
   const stored = (await browser.storage.local.get(SETTINGS_KEY))[SETTINGS_KEY] as
@@ -273,22 +260,34 @@ async function refreshActiveTab(notify = true): Promise<void> {
   if (!activeTab?.id) {
     state.activeTab = createEmptyActiveTabSummary();
     state.contentContext = null;
-    if (notify) emitStateChanged();
+    if (notify) {
+      emitStateChanged();
+    }
     return;
   }
 
   state.activeTab = summarizeTab(activeTab);
   state.contentContext = contentContexts.get(activeTab.id) ?? null;
 
-  if (notify) emitStateChanged();
+  if (state.activeTab.activeServiceId) {
+    const contentContext = await requestContextFromTab(activeTab.id);
+
+    if (contentContext) {
+      state.contentContext = contentContext;
+      contentContexts.set(activeTab.id, contentContext);
+    }
+    // If the content script has not injected yet we silently fall back to
+    // whatever was cached in `contentContexts`; the classifier alone is
+    // enough to enable the "Create room" button.
+  }
+
+  if (notify) {
+    emitStateChanged();
+  }
 }
 
-// ---------------------------------------------------------------------------
-// Room lifecycle
-// ---------------------------------------------------------------------------
-
-async function createRoom(): Promise<void> {
-  const { context } = requireControllableWatchTab();
+async function createRoom(): Promise<PopupState> {
+  const { context } = await requireControllableWatchTab();
 
   const response = await emitWithAck<RoomResponse>('room:create', {
     memberId: ensureMemberId(),
@@ -306,10 +305,12 @@ async function createRoom(): Promise<void> {
   state.controlledTabId = state.activeTab.tabId;
   applyRoomResponse(response);
   await applySnapshotToControlledTab();
+
+  return buildPopupState();
 }
 
-async function joinRoom(roomCode: string): Promise<void> {
-  const { context } = requireControllableWatchTab();
+async function joinRoom(roomCode: string): Promise<PopupState> {
+  const { context } = await requireControllableWatchTab();
 
   const response = await emitWithAck<RoomResponse>('room:join', {
     roomCode: roomCode.trim().toUpperCase(),
@@ -321,9 +322,11 @@ async function joinRoom(roomCode: string): Promise<void> {
   state.controlledTabId = state.activeTab.tabId;
   applyRoomResponse(response);
   await applySnapshotToControlledTab();
+
+  return buildPopupState();
 }
 
-async function leaveRoom(): Promise<void> {
+async function leaveRoom(): Promise<PopupState> {
   if (state.session && socket) {
     try {
       await emitWithAck('room:leave', {
@@ -331,7 +334,7 @@ async function leaveRoom(): Promise<void> {
         memberId: state.session.memberId,
       });
     } catch {
-      // Best effort — we tear down the local session regardless.
+      // Best effort.
     }
   }
 
@@ -346,14 +349,23 @@ async function leaveRoom(): Promise<void> {
   state.lastWarning = null;
   await persistState();
   emitStateChanged();
+
+  return buildPopupState();
 }
 
+async function sendPlaybackUpdate(update: PlaybackUpdate): Promise<PopupState>;
+async function sendPlaybackUpdate(
+  update: PlaybackUpdate,
+  isLocalRelay: true,
+): Promise<PopupState | { ok: false }>;
 async function sendPlaybackUpdate(
   update: PlaybackUpdate,
   isLocalRelay = false,
-): Promise<void> {
+): Promise<PopupState | { ok: false }> {
   if (!state.session) {
-    if (isLocalRelay) return;
+    if (isLocalRelay) {
+      return { ok: false };
+    }
     throw new Error('Join or create a room first.');
   }
 
@@ -361,7 +373,7 @@ async function sendPlaybackUpdate(
   if (playbackContext?.mediaId && playbackContext.mediaId !== update.mediaId) {
     state.lastWarning = 'Local title no longer matches the active room.';
     emitStateChanged();
-    return;
+    return buildPopupState();
   }
 
   await emitWithAck<PartySnapshot>('playback:update', {
@@ -370,7 +382,11 @@ async function sendPlaybackUpdate(
     update,
   });
 
-  if (!isLocalRelay) emitStateChanged();
+  if (!isLocalRelay) {
+    emitStateChanged();
+  }
+
+  return buildPopupState();
 }
 
 /**
@@ -388,7 +404,7 @@ interface ControllableWatchTab {
   context: ReadyServiceContentContext;
 }
 
-function requireControllableWatchTab(): ControllableWatchTab {
+async function requireControllableWatchTab(): Promise<ControllableWatchTab> {
   if (!state.activeTab.tabId || !state.activeTab.isWatchPage) {
     throw new Error('Open a supported watch page before starting a party.');
   }
@@ -407,16 +423,12 @@ function requireControllableWatchTab(): ControllableWatchTab {
     throw new Error('Active tab and reported service disagree. Refresh the tab.');
   }
 
-  return { plugin, context: context };
+  return { plugin, context: context as ReadyServiceContentContext };
 }
 
 function ensureMemberId(): string {
   return state.session?.memberId ?? `${browser.runtime.id}:${crypto.randomUUID()}`;
 }
-
-// ---------------------------------------------------------------------------
-// Socket lifecycle
-// ---------------------------------------------------------------------------
 
 async function ensureSocket(): Promise<void> {
   const serverUrl = normalizeServerUrl(state.settings.serverUrl);
@@ -525,10 +537,7 @@ async function applySnapshotToControlledTab(): Promise<void> {
 
   const sessionPlugin = state.session ? getPlugin(state.session.serviceId) : null;
 
-  const result = await contentPorts.applySnapshot(
-    state.controlledTabId,
-    state.room,
-  );
+  const result = await applySnapshotToTab(state.controlledTabId, state.room);
 
   if (!result) {
     state.lastWarning = sessionPlugin
@@ -559,10 +568,6 @@ function applyRoomResponse(response: RoomResponse): void {
   emitStateChanged();
 }
 
-// ---------------------------------------------------------------------------
-// State assembly
-// ---------------------------------------------------------------------------
-
 function buildPopupState(): PopupState {
   return {
     settings: { ...state.settings },
@@ -583,7 +588,8 @@ function buildPopupState(): PopupState {
 }
 
 function emitStateChanged(): void {
-  popupPorts.broadcastState(buildPopupState());
+  const message: BackgroundBroadcast = { type: 'party:state-updated' };
+  void browser.runtime.sendMessage(message).catch(() => undefined);
 }
 
 /**
@@ -629,10 +635,6 @@ async function emitWithAck<T>(
   });
 }
 
-// ---------------------------------------------------------------------------
-// Small helpers
-// ---------------------------------------------------------------------------
-
 function summarizeTab(tab: BrowserTab): ActiveTabSummary {
   const url = tab.url ?? '';
   const classification = findPluginByUrl(url);
@@ -674,4 +676,34 @@ function getErrorMessage(error: unknown): string {
   }
 
   return 'Unexpected error.';
+}
+
+/**
+ * Send a typed message to a tab's content script. Resolves to `null` when the
+ * tab has no listener (content script not injected yet) or returned nothing.
+ * Never throws.
+ */
+async function requestContextFromTab(tabId: number): Promise<ServiceContentContext | null> {
+  try {
+    const response = await sendMessage('party:request-context', undefined, { tabId });
+    return response ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function applySnapshotToTab(
+  tabId: number,
+  snapshot: PartySnapshot,
+): Promise<ApplySnapshotResult | null> {
+  try {
+    const response = await sendMessage(
+      'party:apply-snapshot',
+      { snapshot },
+      { tabId },
+    );
+    return response ?? null;
+  } catch {
+    return null;
+  }
 }

@@ -12,6 +12,8 @@ const connectSrc = [
   'ws://localhost:8787',
   'http://127.0.0.1:8787',
   'ws://127.0.0.1:8787',
+  // WXT dev server (Vite HMR + extension reload). Harmless in production
+  // builds since localhost isn't reachable from a packaged extension.
   'http://localhost:3000',
   'ws://localhost:3000',
   'https://*',

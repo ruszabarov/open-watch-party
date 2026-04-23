@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
 
   import {
+    coercePopupState,
     createDefaultPopupState,
-    type PopupCommand,
     type PopupState,
   } from '../../lib/protocol/extension';
-  import { createPopupClient } from '../../lib/protocol/popup-client';
+  import { sendMessage, type PopupRequest } from '../../lib/protocol/messaging';
 
   import Header from './ui/Header.svelte';
   import Lobby from './ui/Lobby.svelte';
@@ -14,24 +14,33 @@
   import Settings from './ui/Settings.svelte';
   import Notice from './ui/Notice.svelte';
 
-  let popup: PopupState = $state(createDefaultPopupState());
+  const emptyState = createDefaultPopupState();
+  const POPUP_STATE_RETRY_DELAY_MS = 50;
+
+  let popup: PopupState = $state(emptyState);
   let isBusy = $state(false);
   let settingsOpen = $state(false);
 
-  const client = createPopupClient({
-    onState: (state) => {
-      popup = state;
-    },
-  });
-
-  onDestroy(() => client.close());
-
-  async function perform(command: PopupCommand): Promise<void> {
-    isBusy = true;
+  async function syncState(): Promise<void> {
     try {
-      await client.send(command);
+      popup = await requestPopupState({ type: 'party:get-state' });
     } catch (error) {
       popup = { ...popup, lastError: getErrorMessage(error) };
+    }
+  }
+
+  async function sendRequest(request: PopupRequest): Promise<PopupState> {
+    try {
+      return await requestPopupState(request);
+    } catch (error) {
+      return { ...popup, lastError: getErrorMessage(error) };
+    }
+  }
+
+  async function perform(request: PopupRequest): Promise<void> {
+    isBusy = true;
+    try {
+      popup = await sendRequest(request);
     } finally {
       isBusy = false;
     }
@@ -75,6 +84,52 @@
   function closeSettings(): void {
     settingsOpen = false;
   }
+
+  async function requestPopupState(request: PopupRequest): Promise<PopupState> {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await sendBackgroundRequest(request);
+      if (attempt === 1 || response != null) {
+        return coercePopupState(response, popup);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, POPUP_STATE_RETRY_DELAY_MS));
+    }
+
+    return popup;
+  }
+
+  async function sendBackgroundRequest(request: PopupRequest): Promise<PopupState> {
+    switch (request.type) {
+      case 'party:get-state':
+        return sendMessage('party:get-state');
+      case 'settings:update':
+        return sendMessage('settings:update', request.payload);
+      case 'room:create':
+        return sendMessage('room:create');
+      case 'room:join':
+        return sendMessage('room:join', request.payload);
+      case 'room:leave':
+        return sendMessage('room:leave');
+      case 'room:playback-update':
+        return sendMessage('room:playback-update', request.payload);
+    }
+  }
+
+  onMount(() => {
+    void syncState();
+
+    const listener = (message: { type?: string }) => {
+      if (message?.type === 'party:state-updated') {
+        void syncState();
+      }
+    };
+
+    browser.runtime.onMessage.addListener(listener);
+
+    return () => {
+      browser.runtime.onMessage.removeListener(listener);
+    };
+  });
 </script>
 
 <div class="flex flex-col overflow-hidden bg-stone-50 text-stone-900">
