@@ -43,7 +43,7 @@
       class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-current opacity-70 transition-opacity ease-out hover:bg-current/10 hover:opacity-100 focus-ring"
       type="button"
       aria-label="Dismiss"
-      onclickcapture={onDismiss}
+      onclick={onDismiss}
     >
       <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden="true">
         <path d="M3.5 3.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />

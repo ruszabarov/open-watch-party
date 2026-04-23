@@ -32,7 +32,7 @@
   }
 </script>
 
-<form class="flex flex-col gap-3" onsubmitcapture={handleSave}>
+<form class="flex flex-col gap-3" onsubmit={handleSave}>
   <label class="flex flex-col gap-2">
     <span class="label-tiny">Display name</span>
     <input

@@ -39,7 +39,7 @@
         class="btn-icon"
         type="button"
         aria-label={copied ? 'Copied' : 'Copy room code'}
-        onclickcapture={copyCode}
+        onclick={copyCode}
       >
         {#if copied}
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -55,7 +55,7 @@
       <button
         class="btn-danger"
         type="button"
-        onclickcapture={onLeave}
+        onclick={onLeave}
         disabled={isBusy}
       >
         Leave

@@ -81,7 +81,7 @@
   <button
     class="btn-primary"
     type="button"
-    onclickcapture={onCreateRoom}
+    onclick={onCreateRoom}
     disabled={!canCreate}
   >
     Create room
@@ -91,7 +91,7 @@
 
   <form
     class="flex flex-col gap-2"
-    onsubmitcapture={(e) => {
+    onsubmit={(e) => {
       e.preventDefault();
       handleJoin();
     }}
