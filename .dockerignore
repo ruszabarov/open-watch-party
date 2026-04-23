@@ -1,0 +1,10 @@
+node_modules
+.git
+.DS_Store
+dist
+.output
+.wxt
+coverage
+apps/extension/.output
+apps/extension/.wxt
+apps/extension/dist
