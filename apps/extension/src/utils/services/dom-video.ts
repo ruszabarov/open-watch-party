@@ -67,21 +67,22 @@ function buildContextFromState(
   config: DomVideoAdapterConfig,
 ): ServiceContentContext {
   const { video, mediaId, mediaTitle, isWatchPage } = state;
+  const issue = !isWatchPage
+    ? config.issueWhenNoMedia
+    : video
+      ? undefined
+      : config.issueWhenPlayerNotReady;
 
   return {
     serviceId: config.serviceId,
     href: window.location.href,
     title: document.title,
-    mediaId,
     mediaTitle,
     playbackReady: Boolean(isWatchPage && video),
     playing: video ? !video.paused : false,
     positionSec: video ? Number(video.currentTime.toFixed(3)) : 0,
-    issue: !isWatchPage
-      ? config.issueWhenNoMedia
-      : video
-        ? undefined
-        : config.issueWhenPlayerNotReady,
+    ...(mediaId ? { mediaId } : {}),
+    ...(issue ? { issue } : {}),
   };
 }
 

@@ -20,7 +20,7 @@ export interface ServiceContentContext {
   href: string;
   title: string;
   mediaId?: string;
-  mediaTitle?: string;
+  mediaTitle: string;
   playbackReady: boolean;
   playing: boolean;
   positionSec: number;

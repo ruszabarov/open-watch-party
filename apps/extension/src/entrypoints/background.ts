@@ -1,3 +1,4 @@
+import { defineBackground } from 'wxt/utils/define-background';
 import { registerService } from '@webext-core/proxy-service';
 
 import { onMessage } from '../utils/protocol/messaging';

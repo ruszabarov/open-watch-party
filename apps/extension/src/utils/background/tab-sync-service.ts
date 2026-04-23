@@ -1,3 +1,4 @@
+import { browser } from 'wxt/browser';
 import type { PartySnapshot, PlaybackUpdateDraft } from '@watch-party/shared';
 
 import type {

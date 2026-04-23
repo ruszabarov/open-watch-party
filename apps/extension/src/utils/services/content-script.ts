@@ -1,3 +1,4 @@
+import { defineContentScript } from 'wxt/utils/define-content-script';
 import { onMessage, sendMessage } from '../protocol/messaging';
 import type { ServicePlugin } from './types';
 

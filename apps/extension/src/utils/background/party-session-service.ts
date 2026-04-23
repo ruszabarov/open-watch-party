@@ -1,3 +1,4 @@
+import { browser } from 'wxt/browser';
 import { io, type Socket } from 'socket.io-client';
 import {
   createRoomRequestSchema,

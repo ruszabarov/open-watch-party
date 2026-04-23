@@ -1,19 +1,19 @@
-import { z } from 'zod';
+import { z } from "zod";
 
-export const SUPPORTED_SERVICES = ['netflix', 'youtube'] as const;
+export const SUPPORTED_SERVICES = ["netflix", "youtube"] as const;
 export const MAX_MEMBER_NAME_LENGTH = 64;
 export const MAX_TITLE_LENGTH = 256;
 export const MAX_PLAYBACK_POSITION_SEC = 48 * 60 * 60;
 
-const CONTROL_CHARACTERS_PATTERN = /[\u0000-\u001F\u007F]+/g;
+const CONTROL_CHARACTERS_PATTERN = new RegExp("[\\u0000-\\u001F\\u007F]+", "g");
 
 export type ServiceId = (typeof SUPPORTED_SERVICES)[number];
 export type ConnectionStatus =
-  | 'disconnected'
-  | 'connecting'
-  | 'connected'
-  | 'reconnecting'
-  | 'error';
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "error";
 
 export interface PartyMember {
   id: string;
@@ -42,9 +42,7 @@ export interface PartySnapshot {
   createdAt: number;
 }
 
-export type OperationResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: string };
+export type OperationResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 export type Acknowledge<T> = (response: OperationResult<T>) => void;
 
@@ -54,15 +52,15 @@ export interface RoomResponse {
 }
 
 export function sanitizeMemberName(value: string): string {
-  return sanitizeText(value, MAX_MEMBER_NAME_LENGTH) || 'Guest';
+  return sanitizeText(value, MAX_MEMBER_NAME_LENGTH) || "Guest";
 }
 
-export function sanitizeOptionalTitle(value: string | undefined): string | undefined {
+export function sanitizeOptionalTitle(value: string | undefined): string {
   if (value == null) {
-    return undefined;
+    return "";
   }
 
-  return sanitizeText(value, MAX_TITLE_LENGTH) || undefined;
+  return sanitizeText(value, MAX_TITLE_LENGTH) || "";
 }
 
 const serviceIdSchema = z.enum(SUPPORTED_SERVICES);
@@ -73,11 +71,7 @@ const roomCodeSchema = z
   .pipe(z.string().min(1));
 const memberIdSchema = z.string().trim().min(1);
 const mediaIdSchema = z.string().trim().min(1);
-const positionSchema = z
-  .number()
-  .finite()
-  .min(0)
-  .max(MAX_PLAYBACK_POSITION_SEC);
+const positionSchema = z.number().min(0).max(MAX_PLAYBACK_POSITION_SEC);
 const memberNameSchema = z.string().transform(sanitizeMemberName);
 const titleSchema = z
   .string()
@@ -98,7 +92,7 @@ export const playbackUpdateSchema = z.object({
   title: titleSchema,
   positionSec: positionSchema,
   playing: z.boolean(),
-  clientSequence: z.number().int().finite().min(0),
+  clientSequence: z.number().int().min(0),
 });
 
 export const createRoomRequestSchema = z.object({
@@ -117,42 +111,35 @@ export const joinRoomRequestSchema = z.object({
 
 export const leaveRoomRequestSchema = z.object({}).strict();
 
-export const playbackUpdateRequestSchema = z.object({
-  update: playbackUpdateSchema,
-}).strict();
+export const playbackUpdateRequestSchema = z
+  .object({
+    update: playbackUpdateSchema,
+  })
+  .strict();
 
 export type PlaybackStateInput = z.output<typeof playbackStateInputSchema>;
 export type PlaybackUpdate = z.output<typeof playbackUpdateSchema>;
-export type PlaybackUpdateDraft = Omit<PlaybackUpdate, 'clientSequence'>;
+export type PlaybackUpdateDraft = Omit<PlaybackUpdate, "clientSequence">;
 export type CreateRoomRequest = z.output<typeof createRoomRequestSchema>;
 export type JoinRoomRequest = z.output<typeof joinRoomRequestSchema>;
 export type LeaveRoomRequest = z.output<typeof leaveRoomRequestSchema>;
 export type PlaybackUpdateRequest = z.output<typeof playbackUpdateRequestSchema>;
 
 export interface ClientToServerEvents {
-  'room:create': (
-    payload: CreateRoomRequest,
-    acknowledge: Acknowledge<RoomResponse>,
-  ) => void;
-  'room:join': (
-    payload: JoinRoomRequest,
-    acknowledge: Acknowledge<RoomResponse>,
-  ) => void;
-  'room:leave': (
-    payload: LeaveRoomRequest,
-    acknowledge: Acknowledge<{ roomCode: string }>,
-  ) => void;
-  'playback:update': (
+  "room:create": (payload: CreateRoomRequest, acknowledge: Acknowledge<RoomResponse>) => void;
+  "room:join": (payload: JoinRoomRequest, acknowledge: Acknowledge<RoomResponse>) => void;
+  "room:leave": (payload: LeaveRoomRequest, acknowledge: Acknowledge<{ roomCode: string }>) => void;
+  "playback:update": (
     payload: PlaybackUpdateRequest,
     acknowledge: Acknowledge<PartySnapshot>,
   ) => void;
 }
 
 export interface ServerToClientEvents {
-  'room:state': (snapshot: PartySnapshot) => void;
-  'playback:state': (snapshot: PartySnapshot) => void;
+  "room:state": (snapshot: PartySnapshot) => void;
+  "playback:state": (snapshot: PartySnapshot) => void;
 }
 
 function sanitizeText(value: string, maxLength: number): string {
-  return value.replace(CONTROL_CHARACTERS_PATTERN, '').trim().slice(0, maxLength);
+  return value.replace(CONTROL_CHARACTERS_PATTERN, "").trim().slice(0, maxLength);
 }

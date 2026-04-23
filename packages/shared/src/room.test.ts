@@ -50,6 +50,7 @@ describe('room reducer', () => {
       {
         serviceId: 'netflix',
         mediaId: '123',
+        title: 'Example',
         positionSec: 10,
         playing: true,
         clientSequence: 1,
@@ -63,6 +64,7 @@ describe('room reducer', () => {
       {
         serviceId: 'netflix',
         mediaId: '123',
+        title: 'Example',
         positionSec: 12,
         playing: false,
         clientSequence: 1,
@@ -102,6 +104,7 @@ describe('room reducer', () => {
       {
         serviceId: 'netflix',
         mediaId: '123',
+        title: 'Example',
         positionSec: 10,
         playing: true,
         clientSequence: 2,
@@ -115,6 +118,7 @@ describe('room reducer', () => {
       {
         serviceId: 'netflix',
         mediaId: '123',
+        title: 'Example',
         positionSec: 3,
         playing: false,
         clientSequence: 1,
@@ -154,6 +158,7 @@ describe('room reducer', () => {
       {
         serviceId: 'netflix',
         mediaId: '456',
+        title: 'Example',
         positionSec: 25,
         playing: true,
         clientSequence: 1,
@@ -238,6 +243,7 @@ describe('room reducer', () => {
       {
         serviceId: 'youtube',
         mediaId: 'next456',
+        title: 'Clip 2',
         positionSec: 0,
         playing: false,
         clientSequence: 1,
@@ -390,6 +396,7 @@ describe('protocol schemas', () => {
       {
         serviceId: 'youtube',
         mediaId: 'abc123',
+        title: 'Clip',
         positionSec: 5,
         playing: true,
         clientSequence: 3,
