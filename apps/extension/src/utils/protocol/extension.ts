@@ -6,8 +6,6 @@ import type {
 
 export const DEFAULT_SERVER_URL = __WATCH_PARTY_DEFAULT_SERVER_URL__;
 export const SHOW_SERVER_SETTINGS = __WATCH_PARTY_SHOW_SERVER_SETTINGS__;
-export const SYNC_DRIFT_THRESHOLD_SEC = 1.5;
-export const LOCAL_UPDATE_SUPPRESSION_MS = 1_000;
 
 export interface ActiveTabSummary {
   tabId: number | null;

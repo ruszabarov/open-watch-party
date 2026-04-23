@@ -1,11 +1,12 @@
 import type { PartySnapshot, ServiceId } from '@watch-party/shared';
 
 import {
-  SYNC_DRIFT_THRESHOLD_SEC,
   type ApplySnapshotResult,
   type ServiceContentContext,
 } from '../protocol/extension';
 import type { StreamingServiceAdapter } from './types';
+
+const SEEK_CORRECTION_THRESHOLD_SEC = 1.5;
 
 export interface DomVideoAdapterConfig {
   readonly serviceId: ServiceId;
@@ -50,7 +51,7 @@ interface SnapshotPlaybackTarget {
   readonly shouldPlay: boolean;
 }
 
-interface SuppressedPlaybackUpdate {
+interface PendingAppliedPlaybackState {
   readonly mediaId: string;
   readonly playing: boolean;
   readonly positionSec: number;
@@ -109,9 +110,9 @@ function isSameContext(
   );
 }
 
-function getSuppressedPlaybackUpdate(
+function getPendingAppliedPlaybackState(
   context: ServiceContentContext,
-): SuppressedPlaybackUpdate | null {
+): PendingAppliedPlaybackState | null {
   if (!context.playbackReady || !context.mediaId) {
     return null;
   }
@@ -123,24 +124,24 @@ function getSuppressedPlaybackUpdate(
   };
 }
 
-function isSuppressedPlaybackUpdate(
-  suppressed: SuppressedPlaybackUpdate | null,
+function matchesPendingAppliedPlaybackState(
+  pendingState: PendingAppliedPlaybackState | null,
   context: ServiceContentContext,
 ): boolean {
-  if (!suppressed || !context.playbackReady || !context.mediaId) {
+  if (!pendingState || !context.playbackReady || !context.mediaId) {
     return false;
   }
 
   if (
-    suppressed.mediaId !== context.mediaId ||
-    suppressed.playing !== context.playing
+    pendingState.mediaId !== context.mediaId ||
+    pendingState.playing !== context.playing
   ) {
     return false;
   }
 
   return (
-    Math.abs(suppressed.positionSec - context.positionSec) <=
-    SYNC_DRIFT_THRESHOLD_SEC
+    Math.abs(pendingState.positionSec - context.positionSec) <=
+    SEEK_CORRECTION_THRESHOLD_SEC
   );
 }
 
@@ -166,13 +167,9 @@ function getSnapshotPlaybackTarget(
     };
   }
 
-  const elapsedSec = snapshot.playback.playing
-    ? Math.max(0, (Date.now() - snapshot.playback.updatedAt) / 1000)
-    : 0;
-
   return {
     video,
-    targetPositionSec: snapshot.playback.positionSec + elapsedSec,
+    targetPositionSec: snapshot.playback.positionSec,
     shouldPlay: snapshot.playback.playing,
   };
 }
@@ -181,7 +178,7 @@ function syncVideoPosition(
   video: HTMLVideoElement,
   targetPositionSec: number,
 ): void {
-  if (Math.abs(video.currentTime - targetPositionSec) > SYNC_DRIFT_THRESHOLD_SEC) {
+  if (Math.abs(video.currentTime - targetPositionSec) > SEEK_CORRECTION_THRESHOLD_SEC) {
     video.currentTime = targetPositionSec;
   }
 }
@@ -242,23 +239,28 @@ export function createDomVideoAdapter(
 
   const readContext = (): ServiceContentContext => getContextFromState(readPlaybackState());
 
-  let suppressedPlaybackUpdate: SuppressedPlaybackUpdate | null = null;
+  let pendingAppliedPlaybackState: PendingAppliedPlaybackState | null = null;
 
-  const applySuppressedPlaybackUpdate = (context: ServiceContentContext) => {
-    if (isSuppressedPlaybackUpdate(suppressedPlaybackUpdate, context)) {
-      suppressedPlaybackUpdate = null;
+  const consumePendingAppliedPlaybackState = (context: ServiceContentContext) => {
+    if (matchesPendingAppliedPlaybackState(pendingAppliedPlaybackState, context)) {
+      pendingAppliedPlaybackState = null;
       return true;
     }
 
-    if (suppressedPlaybackUpdate && context.mediaId !== suppressedPlaybackUpdate.mediaId) {
-      suppressedPlaybackUpdate = null;
+    if (
+      pendingAppliedPlaybackState &&
+      context.mediaId !== pendingAppliedPlaybackState.mediaId
+    ) {
+      pendingAppliedPlaybackState = null;
     }
 
     return false;
   };
 
-  const setSuppressedPlaybackUpdate = (context: ServiceContentContext) => {
-    suppressedPlaybackUpdate = getSuppressedPlaybackUpdate(context);
+  const rememberPendingAppliedPlaybackState = (
+    context: ServiceContentContext,
+  ) => {
+    pendingAppliedPlaybackState = getPendingAppliedPlaybackState(context);
   };
 
   return {
@@ -277,7 +279,7 @@ export function createDomVideoAdapter(
       };
 
       const emitPlaybackUpdate = (context: ServiceContentContext) => {
-        if (applySuppressedPlaybackUpdate(context)) return;
+        if (consumePendingAppliedPlaybackState(context)) return;
         if (!context.playbackReady || !context.mediaId) return;
         onPlaybackUpdate({
           serviceId: config.serviceId,
@@ -398,7 +400,7 @@ export function createDomVideoAdapter(
       }
 
       const appliedContext = readContext();
-      setSuppressedPlaybackUpdate(appliedContext);
+      rememberPendingAppliedPlaybackState(appliedContext);
       return { applied: true, context: appliedContext };
     },
   };

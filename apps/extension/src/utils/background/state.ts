@@ -1,7 +1,4 @@
-import {
-  type ServiceId,
-  resolvePlaybackState,
-} from '@watch-party/shared';
+import type { ServiceId } from '@watch-party/shared';
 
 import {
   DEFAULT_SERVER_URL,
@@ -47,12 +44,7 @@ export function buildPopupState(state: InternalState): PopupState {
   return {
     settings: { ...state.settings },
     connectionStatus: state.connectionStatus,
-    room: state.room
-      ? {
-          ...state.room,
-          playback: resolvePlaybackState(state.room.playback),
-        }
-      : null,
+    room: state.room,
     roomMemberId: state.roomMemberId,
     activeTab: state.activeTab,
     controlledTabId: state.controlledTabId,
