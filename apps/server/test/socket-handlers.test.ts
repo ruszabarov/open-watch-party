@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { OperationResult, RoomResponse } from '@watch-party/shared';
 import { createRoomState, MAX_TITLE_LENGTH, upsertRoomMember } from '@watch-party/shared';
 
-import { createConnectionHandler, createRealtimeState } from './socket-handlers';
+import { createConnectionHandler, createRealtimeState } from '../src/socket-handlers';
 
 type RecordedEmission = {
   room: string;
@@ -77,7 +77,13 @@ function createPlaybackUpdateTestContext(socketId = 'socket-1') {
   });
 
   upsertRoomMember(room, 'member-a', 'Member A');
-  state.rooms.set(room.roomCode, room);
+  state.roomStore.set({ room, lastActivity: Date.now() });
+  state.sessionsBySocket.set(socketId, {
+    socketId,
+    roomCode: room.roomCode,
+    memberId: 'member-a',
+  });
+  state.activeSocketByMember.set(`${room.roomCode}:member-a`, socketId);
 
   createConnectionHandler(io as never, state)(socket as never);
 
@@ -199,6 +205,7 @@ describe('socket handlers', () => {
       expect(state.playbackUpdateRateLimiter.consume('socket-1')).toBe(true);
     }
     expect(state.playbackUpdateRateLimiter.consume('socket-1')).toBe(false);
+    expect(state.roomStore.size()).toBe(0);
   });
 
   it('sanitizes valid room creation payloads before storing and broadcasting', () => {
@@ -232,17 +239,125 @@ describe('socket handlers', () => {
       },
     );
 
-    expect(response?.ok).toBe(true);
-    if (!response?.ok) {
-      return;
+    expect(response).not.toBeNull();
+    const successfulResponse = response as { ok: true; data: RoomResponse } | null;
+    if (successfulResponse == null) {
+      throw new Error('Expected room creation to succeed.');
     }
 
-    expect(response.data.memberId).toBe('member-a');
-    expect(response.data.snapshot.members[0]?.name).toBe('Host');
-    expect(response.data.snapshot.playback.title).toBe('T'.repeat(MAX_TITLE_LENGTH));
-    expect(state.rooms.size).toBe(1);
-    expect(socket.joinedRooms).toEqual([response.data.snapshot.roomCode]);
+    expect(successfulResponse.data.memberId).toBe('member-a');
+    expect(successfulResponse.data.snapshot.members[0]?.name).toBe('Host');
+    expect(successfulResponse.data.snapshot.playback.title).toBe('T'.repeat(MAX_TITLE_LENGTH));
+    expect(state.roomStore.size()).toBe(1);
+    expect(socket.joinedRooms).toEqual([successfulResponse.data.snapshot.roomCode]);
     expect(io.emitted).toHaveLength(1);
     expect(io.emitted[0]?.event).toBe('room:state');
+  });
+
+  it('rejects room creation when the room cap is reached', () => {
+    const io = new FakeIo();
+    const socket = new FakeSocket('socket-3');
+    const state = createRealtimeState({ maxRooms: 1 });
+    const room = createRoomState('ROOM01', {
+      memberId: 'member-a',
+      memberName: 'Member A',
+      serviceId: 'youtube',
+      initialPlayback: {
+        serviceId: 'youtube',
+        mediaId: 'abc123',
+        title: 'Clip',
+        playing: true,
+        positionSec: 5,
+      },
+    });
+
+    state.roomStore.set({ room, lastActivity: Date.now() });
+    createConnectionHandler(io as never, state)(socket as never);
+
+    const roomCreateHandler = socket.handlers.get('room:create') as (
+      payload: unknown,
+      acknowledge: (response: OperationResult<RoomResponse>) => void,
+    ) => void;
+
+    let response: OperationResult<RoomResponse> | null = null;
+    roomCreateHandler(
+      {
+        memberId: 'member-b',
+        memberName: 'Member B',
+        serviceId: 'youtube',
+        initialPlayback: {
+          serviceId: 'youtube',
+          mediaId: 'def456',
+          title: 'Another Clip',
+          playing: false,
+          positionSec: 0,
+        },
+      },
+      (value) => {
+        response = value;
+      },
+    );
+
+    expect(response).toEqual({
+      ok: false,
+      error: 'Room limit reached (1). Please try again later.',
+    });
+    expect(state.roomStore.size()).toBe(1);
+  });
+
+  it('refreshes last activity on room joins', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-23T12:00:00.000Z'));
+
+    const io = new FakeIo();
+    const socket = new FakeSocket('socket-4');
+    const state = createRealtimeState();
+    const room = createRoomState('ROOM01', {
+      memberId: 'member-a',
+      memberName: 'Member A',
+      serviceId: 'youtube',
+      initialPlayback: {
+        serviceId: 'youtube',
+        mediaId: 'abc123',
+        title: 'Clip',
+        playing: true,
+        positionSec: 5,
+      },
+    });
+    upsertRoomMember(room, 'member-a', 'Member A');
+    state.roomStore.set({ room, lastActivity: Date.now() - 10_000 });
+
+    createConnectionHandler(io as never, state)(socket as never);
+
+    const roomJoinHandler = socket.handlers.get('room:join') as (
+      payload: unknown,
+      acknowledge: (response: OperationResult<RoomResponse>) => void,
+    ) => void;
+
+    roomJoinHandler(
+      {
+        roomCode: 'ROOM01',
+        memberId: 'member-b',
+        memberName: 'Member B',
+      },
+      () => undefined,
+    );
+
+    expect(state.roomStore.get('ROOM01')?.lastActivity).toBe(Date.now());
+  });
+
+  it('refreshes last activity on playback updates', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-23T12:00:00.000Z'));
+
+    const { state, playbackUpdateHandler } = createPlaybackUpdateTestContext();
+    state.roomStore.set({
+      room: state.roomStore.get('ROOM01')!.room,
+      lastActivity: Date.now() - 10_000,
+    });
+
+    playbackUpdateHandler(validPlaybackUpdatePayload, () => undefined);
+
+    expect(state.roomStore.get('ROOM01')?.lastActivity).toBe(Date.now());
   });
 });

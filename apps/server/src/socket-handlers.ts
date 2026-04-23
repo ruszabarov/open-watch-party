@@ -2,7 +2,6 @@ import type { ZodType } from 'zod';
 import { Server, type Socket } from 'socket.io';
 import {
   applyPlaybackUpdate,
-  createRoomCode,
   createRoomRequestSchema,
   createRoomState,
   joinRoomRequestSchema,
@@ -28,6 +27,12 @@ import {
   createTokenBucketRateLimiter,
   type TokenBucketRateLimiter,
 } from './token-bucket-rate-limiter';
+import {
+  RoomStoreCapacityError,
+  createInMemoryRoomStore,
+  type RoomRecord,
+  type RoomStore,
+} from './room-store';
 
 type ConnectionSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 type RealtimeServer = Server<ClientToServerEvents, ServerToClientEvents>;
@@ -39,27 +44,57 @@ export type SessionRecord = {
 };
 
 export type RealtimeState = {
-  rooms: Map<string, RoomState>;
+  roomStore: RoomStore;
   sessionsBySocket: Map<string, SessionRecord>;
   activeSocketByMember: Map<string, string>;
   playbackUpdateRateLimiter: TokenBucketRateLimiter;
+  removeRoom: (roomCode: string) => void;
 };
 
 const INVALID_PAYLOAD_ERROR = 'Invalid request payload.';
 const PLAYBACK_UPDATE_RATE_LIMIT_ERROR = 'Playback update rate limit exceeded.';
 const PLAYBACK_UPDATE_TOKENS_PER_SECOND = 10;
 const PLAYBACK_UPDATE_BURST_CAPACITY = 20;
+export const DEFAULT_MAX_ROOMS = 1_000;
 
-export function createRealtimeState(): RealtimeState {
-  return {
-    rooms: new Map<string, RoomState>(),
+export type RealtimeStateOptions = {
+  maxRooms?: number;
+};
+
+export function createRealtimeState(options: RealtimeStateOptions = {}): RealtimeState {
+  const state = {
+    roomStore: createInMemoryRoomStore({
+      maxRooms: options.maxRooms ?? DEFAULT_MAX_ROOMS,
+    }),
     sessionsBySocket: new Map<string, SessionRecord>(),
     activeSocketByMember: new Map<string, string>(),
     playbackUpdateRateLimiter: createTokenBucketRateLimiter({
       capacity: PLAYBACK_UPDATE_BURST_CAPACITY,
       refillRatePerSecond: PLAYBACK_UPDATE_TOKENS_PER_SECOND,
     }),
+    removeRoom: (roomCodeValue: string): void => {
+      const roomCode = normalizeRoomCode(roomCodeValue);
+
+      state.roomStore.delete(roomCode);
+
+      for (const [socketId, session] of state.sessionsBySocket.entries()) {
+        if (session.roomCode !== roomCode) {
+          continue;
+        }
+
+        state.playbackUpdateRateLimiter.reset(socketId);
+        state.sessionsBySocket.delete(socketId);
+      }
+
+      for (const key of [...state.activeSocketByMember.keys()]) {
+        if (key.startsWith(`${roomCode}:`)) {
+          state.activeSocketByMember.delete(key);
+        }
+      }
+    },
   };
+
+  return state;
 }
 
 export function registerSocketHandlers(io: RealtimeServer, state: RealtimeState): void {
@@ -70,30 +105,42 @@ export function createConnectionHandler(io: RealtimeServer, state: RealtimeState
   return (socket: ConnectionSocket): void => {
     socket.on(
       'room:create',
-      withValidatedPayload(createRoomRequestSchema, (payload, acknowledge) => {
-        handleRoomCreate(io, state, socket, payload, acknowledge);
-      }),
+      withValidatedPayload<CreateRoomRequest, RoomResponse>(
+        createRoomRequestSchema,
+        (payload, acknowledge) => {
+          handleRoomCreate(io, state, socket, payload, acknowledge);
+        },
+      ),
     );
 
     socket.on(
       'room:join',
-      withValidatedPayload(joinRoomRequestSchema, (payload, acknowledge) => {
-        handleRoomJoin(io, state, socket, payload, acknowledge);
-      }),
+      withValidatedPayload<JoinRoomRequest, RoomResponse>(
+        joinRoomRequestSchema,
+        (payload, acknowledge) => {
+          handleRoomJoin(io, state, socket, payload, acknowledge);
+        },
+      ),
     );
 
     socket.on(
       'room:leave',
-      withValidatedPayload(leaveRoomRequestSchema, (payload, acknowledge) => {
-        handleRoomLeave(io, state, socket, payload, acknowledge);
-      }),
+      withValidatedPayload<LeaveRoomRequest, { roomCode: string }>(
+        leaveRoomRequestSchema,
+        (payload, acknowledge) => {
+          handleRoomLeave(io, state, socket, payload, acknowledge);
+        },
+      ),
     );
 
     socket.on(
       'playback:update',
-      withValidatedPayload(playbackUpdateRequestSchema, (payload, acknowledge) => {
-        handlePlaybackUpdate(io, state, socket, payload, acknowledge);
-      }),
+      withValidatedPayload<PlaybackUpdateRequest, ReturnType<typeof toPartySnapshot>>(
+        playbackUpdateRequestSchema,
+        (payload, acknowledge) => {
+          handlePlaybackUpdate(state, socket, payload, acknowledge);
+        },
+      ),
     );
 
     socket.on('disconnect', () => {
@@ -142,18 +189,24 @@ function handleRoomCreate(
   let room: RoomState;
 
   try {
-    const roomCode = getUniqueRoomCode(state.rooms);
+    const roomCode = state.roomStore.generateUniqueRoomCode();
     room = createRoomState(roomCode, payload);
+    state.roomStore.set(createRoomRecord(room));
   } catch (error) {
     acknowledge({
       ok: false,
-      error: error instanceof Error ? error.message : 'Room creation failed.',
+      error:
+        error instanceof RoomStoreCapacityError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : 'Room creation failed.',
     });
     return;
   }
 
   upsertRoomMember(room, payload.memberId, payload.memberName);
-  state.rooms.set(room.roomCode, room);
+  touchRoomActivity(state, room);
 
   bindMemberToSocket(state, socket.id, room.roomCode, payload.memberId);
   socket.join(room.roomCode);
@@ -170,7 +223,8 @@ function handleRoomJoin(
   payload: JoinRoomRequest,
   acknowledge: Acknowledge<RoomResponse>,
 ): void {
-  const room = state.rooms.get(payload.roomCode);
+  const record = state.roomStore.get(payload.roomCode);
+  const room = record?.room;
 
   if (!room) {
     acknowledge({ ok: false, error: 'Room not found.' });
@@ -183,6 +237,7 @@ function handleRoomJoin(
   }
 
   upsertRoomMember(room, payload.memberId, payload.memberName);
+  touchRoomActivity(state, room);
 
   bindMemberToSocket(state, socket.id, payload.roomCode, payload.memberId);
   socket.join(payload.roomCode);
@@ -208,13 +263,13 @@ function handleRoomLeave(
 }
 
 function handlePlaybackUpdate(
-  io: RealtimeServer,
   state: RealtimeState,
   socket: ConnectionSocket,
   payload: PlaybackUpdateRequest,
   acknowledge: Acknowledge<ReturnType<typeof toPartySnapshot>>,
 ): void {
-  const room = state.rooms.get(payload.roomCode);
+  const record = state.roomStore.get(payload.roomCode);
+  const room = record?.room;
 
   if (!room) {
     acknowledge({ ok: false, error: 'Room not found.' });
@@ -246,19 +301,11 @@ function handlePlaybackUpdate(
     return;
   }
 
+  touchRoomActivity(state, room);
+
   const snapshot = toPartySnapshot(room);
   acknowledge({ ok: true, data: snapshot });
   socket.to(room.roomCode).emit('playback:state', snapshot);
-}
-
-function getUniqueRoomCode(rooms: Map<string, RoomState>): string {
-  let roomCode = createRoomCode();
-
-  while (rooms.has(roomCode)) {
-    roomCode = createRoomCode();
-  }
-
-  return roomCode;
 }
 
 function bindMemberToSocket(
@@ -295,7 +342,8 @@ function leaveRoom(
   memberId: string,
 ): void {
   const roomCode = normalizeRoomCode(roomCodeValue);
-  const room = state.rooms.get(roomCode);
+  const record = state.roomStore.get(roomCode);
+  const room = record?.room;
 
   if (!room) {
     return;
@@ -304,13 +352,28 @@ function leaveRoom(
   removeRoomMember(room, memberId);
 
   if (room.members.size === 0) {
-    state.rooms.delete(roomCode);
+    state.removeRoom(roomCode);
     return;
   }
 
+  touchRoomActivity(state, room);
   io.to(roomCode).emit('room:state', toPartySnapshot(room));
 }
 
 function memberKey(roomCode: string, memberId: string): string {
   return `${roomCode}:${memberId}`;
+}
+
+function createRoomRecord(room: RoomState, now = Date.now()): RoomRecord {
+  return {
+    room,
+    lastActivity: now,
+  };
+}
+
+function touchRoomActivity(state: RealtimeState, room: RoomState, now = Date.now()): void {
+  state.roomStore.set({
+    room,
+    lastActivity: now,
+  });
 }

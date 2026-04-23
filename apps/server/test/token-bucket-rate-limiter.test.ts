@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createTokenBucketRateLimiter } from './token-bucket-rate-limiter';
+import { createTokenBucketRateLimiter } from '../src/token-bucket-rate-limiter';
 
 describe('token bucket rate limiter', () => {
   it('rejects requests after consuming the available burst capacity', () => {
