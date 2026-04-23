@@ -1,7 +1,7 @@
 {
   "name": "watch-party-oss",
-  "private": true,
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev:extension": "pnpm --filter @watch-party/extension dev",
@@ -10,11 +10,17 @@
     "build": "pnpm --filter @watch-party/extension build",
     "build:firefox": "pnpm --filter @watch-party/extension build:firefox",
     "build:safari": "pnpm --filter @watch-party/extension build:safari",
-    "check": "pnpm --filter @watch-party/extension check && pnpm --filter @watch-party/shared test",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "check": "pnpm lint && pnpm format:check && pnpm --filter @watch-party/extension check && pnpm --filter @watch-party/shared test",
     "postinstall": "pnpm --filter @watch-party/extension exec wxt prepare"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
+    "oxfmt": "^0.46.0",
+    "oxlint": "^1.61.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.4"

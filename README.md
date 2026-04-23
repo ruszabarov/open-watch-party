@@ -8,9 +8,9 @@ Open-source watch party stack built as a pnpm workspace:
 
 ## Supported services
 
-| Service | Watch URL pattern |
-| --- | --- |
-| Netflix | `netflix.com/watch/...` |
+| Service | Watch URL pattern                                                                          |
+| ------- | ------------------------------------------------------------------------------------------ |
+| Netflix | `netflix.com/watch/...`                                                                    |
 | YouTube | `youtube.com/watch?v=...`, `youtu.be/...`, `youtube.com/embed/...`, `youtube.com/live/...` |
 
 Adding a service is a self-contained change: drop a `ServicePlugin` under

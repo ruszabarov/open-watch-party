@@ -17,9 +17,7 @@ export function sweepIdleRooms(
 ): string[] {
   const now = options.now ?? Date.now;
   const cutoff = now() - options.idleTtlMs;
-  const expiredRoomCodes = state.roomStore
-    .listIdle(cutoff)
-    .map((record) => record.room.roomCode);
+  const expiredRoomCodes = state.roomStore.listIdle(cutoff).map((record) => record.room.roomCode);
 
   for (const roomCode of expiredRoomCodes) {
     io.socketsLeave(roomCode);

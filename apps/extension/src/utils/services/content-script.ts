@@ -22,15 +22,9 @@ export function createServiceContentScript(plugin: ServicePlugin) {
       const stopObserving = adapter.observe(
         (context) => {
           const readyMediaKey =
-            context.playbackReady && context.mediaId
-              ? `${context.href}::${context.mediaId}`
-              : null;
+            context.playbackReady && context.mediaId ? `${context.href}::${context.mediaId}` : null;
 
-          if (
-            readyMediaKey &&
-            lastReadyMediaKey &&
-            readyMediaKey !== lastReadyMediaKey
-          ) {
+          if (readyMediaKey && lastReadyMediaKey && readyMediaKey !== lastReadyMediaKey) {
             void sendMessage('content:request-sync').catch(() => undefined);
           }
 

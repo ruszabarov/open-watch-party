@@ -5,10 +5,7 @@ import type { PopupState } from '../protocol/extension';
 
 export interface PopupBackgroundService {
   getState(): Promise<PopupState>;
-  updateSettings(payload: {
-    serverUrl: string;
-    memberName: string;
-  }): Promise<PopupState>;
+  updateSettings(payload: { serverUrl: string; memberName: string }): Promise<PopupState>;
   createRoom(): Promise<PopupState>;
   joinRoom(payload: { roomCode: string }): Promise<PopupState>;
   leaveRoom(): Promise<PopupState>;

@@ -1,15 +1,8 @@
 import { defineExtensionMessaging } from '@webext-core/messaging';
 
-import type {
-  PartySnapshot,
-  PlaybackUpdateDraft,
-} from '@watch-party/shared';
+import type { PartySnapshot, PlaybackUpdateDraft } from '@watch-party/shared';
 
-import type {
-  ApplySnapshotResult,
-  PopupState,
-  ServiceContentContext,
-} from './extension';
+import type { ApplySnapshotResult, PopupState, ServiceContentContext } from './extension';
 
 export interface ExtensionProtocolMap {
   'content:context': (payload: ServiceContentContext) => void;

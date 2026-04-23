@@ -9,9 +9,7 @@ export class SettingsStore {
   constructor(private readonly state: InternalState) {}
 
   async hydrate(): Promise<void> {
-    const stored = (await localExtStorage.getItem(
-      SETTINGS_KEY,
-    )) as StoredSettings | null;
+    const stored = (await localExtStorage.getItem(SETTINGS_KEY)) as StoredSettings | null;
 
     if (!stored) {
       await this.persist();

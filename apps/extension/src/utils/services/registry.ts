@@ -15,23 +15,17 @@ import type { ServiceDescriptor, ServicePlugin } from './types';
  *   4. Append the plugin below and add its origin(s) to `host_permissions`
  *      in `wxt.config.ts`.
  */
-export const SERVICE_PLUGINS: readonly ServicePlugin[] = [
-  NETFLIX_SERVICE,
-  YOUTUBE_SERVICE,
-];
+export const SERVICE_PLUGINS: readonly ServicePlugin[] = [NETFLIX_SERVICE, YOUTUBE_SERVICE];
 
-export const SUPPORTED_SERVICE_DESCRIPTORS: readonly ServiceDescriptor[] =
-  SERVICE_PLUGINS.map((p) => p.descriptor);
+export const SUPPORTED_SERVICE_DESCRIPTORS: readonly ServiceDescriptor[] = SERVICE_PLUGINS.map(
+  (p) => p.descriptor,
+);
 
-export function getPlugin(
-  id: ServiceId | null | undefined,
-): ServicePlugin | null {
+export function getPlugin(id: ServiceId | null | undefined): ServicePlugin | null {
   return SERVICE_PLUGINS.find((p) => p.descriptor.id === id) ?? null;
 }
 
-export function getServiceDescriptor(
-  id: ServiceId | null | undefined,
-): ServiceDescriptor | null {
+export function getServiceDescriptor(id: ServiceId | null | undefined): ServiceDescriptor | null {
   return getPlugin(id)?.descriptor ?? null;
 }
 
@@ -44,7 +38,5 @@ export function findPluginByUrl(
 ): { plugin: ServicePlugin; isWatchPage: boolean } | null {
   if (!url) return null;
   const plugin = SERVICE_PLUGINS.find((p) => p.matchesService(url));
-  return plugin
-    ? { plugin, isWatchPage: plugin.matchesWatchPage(url) }
-    : null;
+  return plugin ? { plugin, isWatchPage: plugin.matchesWatchPage(url) } : null;
 }

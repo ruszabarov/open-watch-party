@@ -258,8 +258,7 @@ describe('socket handlers', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-23T12:00:00.000Z'));
 
-    const { disconnectHandler, playbackUpdateHandler, state } =
-      createPlaybackUpdateTestContext();
+    const { disconnectHandler, playbackUpdateHandler, state } = createPlaybackUpdateTestContext();
 
     playbackUpdateHandler(createPlaybackUpdatePayload(1), () => undefined);
 
@@ -313,12 +312,9 @@ describe('socket handlers', () => {
     state.activeSocketByMember.delete(`${room.roomCode}:member-a`);
 
     let response: OperationResult<unknown> | null = null;
-    roomLeaveHandler(
-      {},
-      (value) => {
-        response = value;
-      },
-    );
+    roomLeaveHandler({}, (value) => {
+      response = value;
+    });
 
     expect(response).toEqual({
       ok: false,

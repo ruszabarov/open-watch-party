@@ -1,15 +1,9 @@
-import {
-  createDomVideoAdapter,
-} from './dom-video';
+import { createDomVideoAdapter } from './dom-video';
 import { createSelectorMediaLocator } from './media-locators';
-import {
-  createHtml5PlaybackController,
-  type PlaybackController,
-} from './playback-controllers';
+import { createHtml5PlaybackController, type PlaybackController } from './playback-controllers';
 import type { ServicePlugin } from './types';
 
-const YOUTUBE_HOST_RE =
-  /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com)$/;
+const YOUTUBE_HOST_RE = /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com)$/;
 const YOUTUBE_TITLE_SUFFIX = /\s*-\s*YouTube$/i;
 
 interface YouTubePlayerApi {
@@ -36,9 +30,7 @@ function extractYoutubeMediaId(url: URL): string | undefined {
     if (url.pathname === '/watch') {
       return url.searchParams.get('v') ?? undefined;
     }
-    return (
-      url.pathname.match(/^\/(?:embed|live)\/([^/?#]+)/)?.[1] ?? undefined
-    );
+    return url.pathname.match(/^\/(?:embed|live)\/([^/?#]+)/)?.[1] ?? undefined;
   }
 
   if (/(^|\.)youtube-nocookie\.com$/.test(host)) {
@@ -53,9 +45,7 @@ function extractYoutubeMediaId(url: URL): string | undefined {
   return undefined;
 }
 
-function isYouTubePlayerElement(
-  value: Element | null,
-): value is YouTubePlayerElement {
+function isYouTubePlayerElement(value: Element | null): value is YouTubePlayerElement {
   const seekTo = value ? Reflect.get(value, 'seekTo') : undefined;
   const playVideo = value ? Reflect.get(value, 'playVideo') : undefined;
   const pauseVideo = value ? Reflect.get(value, 'pauseVideo') : undefined;
@@ -107,11 +97,7 @@ export const YOUTUBE_SERVICE: ServicePlugin = {
     glyph: 'Y',
     watchPathHint: 'youtube.com/watch?v=…',
   },
-  contentMatches: [
-    '*://*.youtube.com/*',
-    '*://youtu.be/*',
-    '*://*.youtube-nocookie.com/*',
-  ],
+  contentMatches: ['*://*.youtube.com/*', '*://youtu.be/*', '*://*.youtube-nocookie.com/*'],
   matchesService: (url) => parseYoutube(url) !== null,
   matchesWatchPage: (url) => {
     const parsed = parseYoutube(url);
@@ -126,8 +112,7 @@ export const YOUTUBE_SERVICE: ServicePlugin = {
         videoSelector: '#movie_player video, video.html5-main-video, video',
         structureRootSelector: '#movie_player',
         getMediaId: (loc) => extractYoutubeMediaId(new URL(loc.href)),
-        getMediaTitle: (doc) =>
-          doc.title.replace(YOUTUBE_TITLE_SUFFIX, '').trim(),
+        getMediaTitle: (doc) => doc.title.replace(YOUTUBE_TITLE_SUFFIX, '').trim(),
       }),
       playbackController: youtubePlaybackController,
       issueWhenNoMedia: 'Open a youtube.com/watch?v=… page to start a party.',

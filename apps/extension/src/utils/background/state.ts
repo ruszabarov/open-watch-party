@@ -1,10 +1,6 @@
 import { sanitizeMemberName, type ServiceId } from '@watch-party/shared';
 
-import {
-  DEFAULT_SERVER_URL,
-  type ActiveTabSummary,
-  type PopupState,
-} from '../protocol/extension';
+import { DEFAULT_SERVER_URL, type ActiveTabSummary, type PopupState } from '../protocol/extension';
 
 export type SessionInfo = {
   roomCode: string;

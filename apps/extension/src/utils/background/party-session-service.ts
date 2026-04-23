@@ -370,7 +370,5 @@ export class PartySessionService {
 }
 
 type ZodSchemaLike<T> = {
-  safeParse(payload: unknown):
-    | { success: true; data: T }
-    | { success: false };
+  safeParse(payload: unknown): { success: true; data: T } | { success: false };
 };

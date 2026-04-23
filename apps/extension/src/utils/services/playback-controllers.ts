@@ -9,18 +9,13 @@ export interface PlaybackApplyParams {
   readonly context: ServiceContentContext;
 }
 
-export type PlaybackApplyResult =
-  | { ok: true }
-  | { ok: false; reason: string };
+export type PlaybackApplyResult = { ok: true } | { ok: false; reason: string };
 
 export interface PlaybackController {
   apply(params: PlaybackApplyParams): Promise<PlaybackApplyResult>;
 }
 
-function syncVideoPosition(
-  video: HTMLVideoElement,
-  targetPositionSec: number,
-): void {
+function syncVideoPosition(video: HTMLVideoElement, targetPositionSec: number): void {
   if (Math.abs(video.currentTime - targetPositionSec) > SEEK_CORRECTION_THRESHOLD_SEC) {
     video.currentTime = targetPositionSec;
   }

@@ -24,9 +24,7 @@ export interface SelectorMediaLocatorConfig {
   getMediaTitle?(doc: Document): string;
 }
 
-export function createSelectorMediaLocator(
-  config: SelectorMediaLocatorConfig,
-): MediaLocator {
+export function createSelectorMediaLocator(config: SelectorMediaLocatorConfig): MediaLocator {
   const videoSelector = config.videoSelector ?? 'video';
   const structureRootSelector = config.structureRootSelector;
 
@@ -35,8 +33,6 @@ export function createSelectorMediaLocator(
     getMediaId: config.getMediaId,
     getMediaTitle: (doc) => config.getMediaTitle?.(doc) ?? doc.title,
     getStructureRoot: () =>
-      structureRootSelector
-        ? document.querySelector(structureRootSelector)
-        : document.body,
+      structureRootSelector ? document.querySelector(structureRootSelector) : document.body,
   };
 }

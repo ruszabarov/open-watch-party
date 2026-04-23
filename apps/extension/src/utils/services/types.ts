@@ -1,13 +1,6 @@
-import type {
-  PartySnapshot,
-  PlaybackUpdateDraft,
-  ServiceId,
-} from '@watch-party/shared';
+import type { PartySnapshot, PlaybackUpdateDraft, ServiceId } from '@watch-party/shared';
 
-import type {
-  ApplySnapshotResult,
-  ServiceContentContext,
-} from '../protocol/extension';
+import type { ApplySnapshotResult, ServiceContentContext } from '../protocol/extension';
 
 /**
  * Runtime adapter that bridges a specific service's DOM to the background.

@@ -1,10 +1,7 @@
 import { browser } from 'wxt/browser';
 import type { PartySnapshot, PlaybackUpdateDraft } from '@watch-party/shared';
 
-import type {
-  ApplySnapshotResult,
-  ServiceContentContext,
-} from '../protocol/extension';
+import type { ApplySnapshotResult, ServiceContentContext } from '../protocol/extension';
 import { sendMessage } from '../protocol/messaging';
 import { getPlugin, findPluginByUrl } from '../services/registry';
 import type { ServicePlugin } from '../services/types';
@@ -132,10 +129,7 @@ export class TabSyncService {
     emitStateChanged(this.deps.state);
   }
 
-  async relayControlledPlaybackUpdate(
-    tabId: number,
-    update: PlaybackUpdateDraft,
-  ): Promise<void> {
+  async relayControlledPlaybackUpdate(tabId: number, update: PlaybackUpdateDraft): Promise<void> {
     if (tabId !== this.deps.state.controlledTabId) {
       return;
     }
@@ -183,7 +177,7 @@ export class TabSyncService {
       this.deps.state.contentContext = result.context;
     }
 
-    this.deps.state.lastWarning = result.applied ? null : result.reason ?? 'Sync was skipped.';
+    this.deps.state.lastWarning = result.applied ? null : (result.reason ?? 'Sync was skipped.');
   }
 
   async navigateControlledTabToRoom(tabId: number, watchUrl: string): Promise<void> {
@@ -239,11 +233,7 @@ export class TabSyncService {
     snapshot: PartySnapshot,
   ): Promise<ApplySnapshotResult | null> {
     try {
-      const response = await sendMessage(
-        'party:apply-snapshot',
-        { snapshot },
-        { tabId },
-      );
+      const response = await sendMessage('party:apply-snapshot', { snapshot }, { tabId });
       return response ?? null;
     } catch {
       return null;

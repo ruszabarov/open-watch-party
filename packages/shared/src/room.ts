@@ -130,10 +130,7 @@ export function applyPlaybackUpdate(
   return playback;
 }
 
-export function resolvePlaybackState(
-  playback: PlaybackState,
-  now = Date.now(),
-): PlaybackState {
+export function resolvePlaybackState(playback: PlaybackState, now = Date.now()): PlaybackState {
   if (!playback.playing) {
     return playback;
   }
@@ -145,10 +142,7 @@ export function resolvePlaybackState(
   };
 }
 
-export function toPartySnapshot(
-  room: RoomState,
-  now = Date.now(),
-): PartySnapshot {
+export function toPartySnapshot(room: RoomState, now = Date.now()): PartySnapshot {
   const watchUrl = buildCanonicalWatchUrl(room.serviceId, room.playback.mediaId);
   if (!watchUrl) {
     throw new Error('Could not derive a canonical watch URL for this service.');
@@ -158,7 +152,7 @@ export function toPartySnapshot(
     roomCode: room.roomCode,
     serviceId: room.serviceId,
     watchUrl,
-    members: [...room.members.values()].sort((left, right) => {
+    members: [...room.members.values()].toSorted((left, right) => {
       return left.joinedAt - right.joinedAt;
     }),
     playback: resolvePlaybackState(room.playback, now),

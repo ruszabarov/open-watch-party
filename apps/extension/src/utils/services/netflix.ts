@@ -38,8 +38,7 @@ export const NETFLIX_SERVICE: ServicePlugin = {
       serviceId: 'netflix',
       locator: createSelectorMediaLocator({
         getMediaId: (loc) => extractNetflixMediaId(new URL(loc.href)),
-        getMediaTitle: (doc) =>
-          doc.title.replace(NETFLIX_TITLE_SUFFIX, '').trim() || 'Netflix',
+        getMediaTitle: (doc) => doc.title.replace(NETFLIX_TITLE_SUFFIX, '').trim() || 'Netflix',
       }),
       issueWhenNoMedia: 'Open a Netflix watch page to start a party.',
       issueWhenPlayerNotReady: 'Netflix player is still loading.',

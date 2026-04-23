@@ -87,7 +87,7 @@ export function createRealtimeState(options: RealtimeStateOptions = {}): Realtim
         state.sessionsBySocket.delete(socketId);
       }
 
-      for (const key of [...state.activeSocketByMember.keys()]) {
+      for (const key of state.activeSocketByMember.keys()) {
         if (key.startsWith(`${roomCode}:`)) {
           state.activeSocketByMember.delete(key);
         }

@@ -1,0 +1,48 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "import", "unicorn", "vitest", "node"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
+  "ignorePatterns": ["**/.wxt/**", "**/coverage/**", "**/dist/**", "**/*.d.ts", "**/*.svelte"],
+  "overrides": [
+    {
+      "files": ["apps/server/**/*.ts"],
+      "env": {
+        "node": true
+      }
+    },
+    {
+      "files": ["packages/shared/**/*.ts"],
+      "env": {
+        "browser": true,
+        "node": true
+      }
+    },
+    {
+      "files": ["apps/extension/**/*.ts", "apps/extension/**/*.js"],
+      "env": {
+        "browser": true
+      },
+      "globals": {
+        "browser": "readonly",
+        "chrome": "readonly"
+      }
+    },
+    {
+      "files": ["**/*.{test,spec}.ts", "**/*.{test,spec}.js"],
+      "globals": {
+        "afterAll": "readonly",
+        "afterEach": "readonly",
+        "beforeAll": "readonly",
+        "beforeEach": "readonly",
+        "describe": "readonly",
+        "expect": "readonly",
+        "it": "readonly",
+        "test": "readonly",
+        "vi": "readonly"
+      }
+    }
+  ]
+}

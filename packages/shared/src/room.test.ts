@@ -252,9 +252,7 @@ describe('room reducer', () => {
       2_200,
     );
 
-    expect(toPartySnapshot(room).watchUrl).toBe(
-      'https://www.youtube.com/watch?v=next456',
-    );
+    expect(toPartySnapshot(room).watchUrl).toBe('https://www.youtube.com/watch?v=next456');
   });
 
   it('sanitizes member names before storing them in the room', () => {

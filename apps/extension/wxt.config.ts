@@ -1,35 +1,35 @@
-import { defineConfig } from "wxt";
-import tailwindcss from "@tailwindcss/vite";
+import { defineConfig } from 'wxt';
+import tailwindcss from '@tailwindcss/vite';
 
-const LOCAL_SERVER_URL = "http://localhost:8787";
+const LOCAL_SERVER_URL = 'http://localhost:8787';
 
-const defaultServerUrl = process.env["WATCH_PARTY_SERVER_URL"] ?? LOCAL_SERVER_URL;
-const showServerSettings = process.env["WATCH_PARTY_SHOW_SERVER_SETTINGS"] === "true";
+const defaultServerUrl = process.env['WATCH_PARTY_SERVER_URL'] ?? LOCAL_SERVER_URL;
+const showServerSettings = process.env['WATCH_PARTY_SHOW_SERVER_SETTINGS'] === 'true';
 
 const connectSrc = [
   "'self'",
-  "http://localhost:8787",
-  "ws://localhost:8787",
-  "http://127.0.0.1:8787",
-  "ws://127.0.0.1:8787",
+  'http://localhost:8787',
+  'ws://localhost:8787',
+  'http://127.0.0.1:8787',
+  'ws://127.0.0.1:8787',
   // WXT dev server (Vite HMR + extension reload). Harmless in production
   // builds since localhost isn't reachable from a packaged extension.
-  "http://localhost:3000",
-  "ws://localhost:3000",
-  "https://*",
-  "wss://*",
+  'http://localhost:3000',
+  'ws://localhost:3000',
+  'https://*',
+  'wss://*',
 ];
 
 const hostPermissions = [
-  "*://*.netflix.com/*",
-  "*://*.youtube.com/*",
-  "*://youtu.be/*",
-  "*://*.youtube-nocookie.com/*",
+  '*://*.netflix.com/*',
+  '*://*.youtube.com/*',
+  '*://youtu.be/*',
+  '*://*.youtube-nocookie.com/*',
 ];
 
 export default defineConfig({
-  srcDir: "src",
-  modules: ["@wxt-dev/module-svelte"],
+  srcDir: 'src',
+  modules: ['@wxt-dev/module-svelte'],
   vite: () => ({
     plugins: [tailwindcss()],
     define: {
@@ -38,23 +38,23 @@ export default defineConfig({
     },
   }),
   manifest: {
-    name: "Watch Party",
-    description: "Cross-platform watch parties for Netflix and YouTube with realtime sync.",
-    permissions: ["storage", "tabs"],
+    name: 'Watch Party',
+    description: 'Cross-platform watch parties for Netflix and YouTube with realtime sync.',
+    permissions: ['storage', 'tabs'],
     browser_specific_settings: {
       gecko: {
-        id: "watch-party-oss@ruszabarov.com",
+        id: 'watch-party-oss@ruszabarov.com',
         data_collection_permissions: {
-          required: ["browsingActivity", "websiteContent"],
+          required: ['browsingActivity', 'websiteContent'],
         },
       },
     },
     host_permissions: hostPermissions,
     content_security_policy: {
-      extension_pages: `script-src 'self'; object-src 'self'; connect-src ${connectSrc.join(" ")}`,
+      extension_pages: `script-src 'self'; object-src 'self'; connect-src ${connectSrc.join(' ')}`,
     },
     action: {
-      default_title: "Watch Party",
+      default_title: 'Watch Party',
     },
   },
 });

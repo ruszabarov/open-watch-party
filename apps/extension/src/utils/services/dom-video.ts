@@ -1,9 +1,6 @@
 import type { PartySnapshot, ServiceId } from '@watch-party/shared';
 
-import {
-  type ApplySnapshotResult,
-  type ServiceContentContext,
-} from '../protocol/extension';
+import { type ApplySnapshotResult, type ServiceContentContext } from '../protocol/extension';
 import type { MediaLocator } from './media-locators';
 import { createHtml5PlaybackController, type PlaybackController } from './playback-controllers';
 import type { StreamingServiceAdapter } from './types';
@@ -12,14 +9,7 @@ import type { StreamingServiceAdapter } from './types';
 //   play/pause/seeked — user-driven playback state.
 //   loadedmetadata/emptied/ended — source swaps (e.g. SPA nav that reuses
 //   the same <video> element) and natural playback completion.
-const VIDEO_EVENTS = [
-  'play',
-  'pause',
-  'seeked',
-  'loadedmetadata',
-  'emptied',
-  'ended',
-] as const;
+const VIDEO_EVENTS = ['play', 'pause', 'seeked', 'loadedmetadata', 'emptied', 'ended'] as const;
 
 export interface DomVideoAdapterConfig {
   readonly serviceId: ServiceId;
@@ -86,10 +76,7 @@ function buildContextFromState(
   };
 }
 
-function isSameContext(
-  left: ServiceContentContext | null,
-  right: ServiceContentContext,
-): boolean {
+function isSameContext(left: ServiceContentContext | null, right: ServiceContentContext): boolean {
   return (
     left?.href === right.href &&
     left.mediaId === right.mediaId &&
@@ -122,17 +109,11 @@ function matchesPendingAppliedPlaybackState(
     return false;
   }
 
-  if (
-    pendingState.mediaId !== context.mediaId ||
-    pendingState.playing !== context.playing
-  ) {
+  if (pendingState.mediaId !== context.mediaId || pendingState.playing !== context.playing) {
     return false;
   }
 
-  return (
-    Math.abs(pendingState.positionSec - context.positionSec) <=
-    1.5
-  );
+  return Math.abs(pendingState.positionSec - context.positionSec) <= 1.5;
 }
 
 function getSnapshotPlaybackTarget(
@@ -179,14 +160,10 @@ function observeUrlChanges(onChange: () => void): () => void {
  * transport). The adapter owns the shared event wiring, context emission, and
  * snapshot bookkeeping; services only swap the pieces that truly vary.
  */
-export function createDomVideoAdapter(
-  config: DomVideoAdapterConfig,
-): StreamingServiceAdapter {
-  const playbackController =
-    config.playbackController ?? createHtml5PlaybackController();
+export function createDomVideoAdapter(config: DomVideoAdapterConfig): StreamingServiceAdapter {
+  const playbackController = config.playbackController ?? createHtml5PlaybackController();
 
-  const readPlaybackState = (): DomPlaybackState =>
-    buildPlaybackState(config.locator);
+  const readPlaybackState = (): DomPlaybackState => buildPlaybackState(config.locator);
 
   const getContextFromState = (state: DomPlaybackState): ServiceContentContext =>
     buildContextFromState(state, config);
@@ -201,19 +178,14 @@ export function createDomVideoAdapter(
       return true;
     }
 
-    if (
-      pendingAppliedPlaybackState &&
-      context.mediaId !== pendingAppliedPlaybackState.mediaId
-    ) {
+    if (pendingAppliedPlaybackState && context.mediaId !== pendingAppliedPlaybackState.mediaId) {
       pendingAppliedPlaybackState = null;
     }
 
     return false;
   };
 
-  const rememberPendingAppliedPlaybackState = (
-    context: ServiceContentContext,
-  ) => {
+  const rememberPendingAppliedPlaybackState = (context: ServiceContentContext) => {
     pendingAppliedPlaybackState = getPendingAppliedPlaybackState(context);
   };
 

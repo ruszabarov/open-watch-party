@@ -2,11 +2,7 @@ import http from 'node:http';
 import { Server } from 'socket.io';
 import type { ClientToServerEvents, ServerToClientEvents } from '@watch-party/shared';
 
-import {
-  DEFAULT_MAX_ROOMS,
-  createRealtimeState,
-  registerSocketHandlers,
-} from './socket-handlers';
+import { DEFAULT_MAX_ROOMS, createRealtimeState, registerSocketHandlers } from './socket-handlers';
 import { startRoomSweeper } from './room-sweeper';
 
 const port = Number.parseInt(process.env['PORT'] ?? '8787', 10);

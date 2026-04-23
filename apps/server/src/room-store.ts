@@ -25,9 +25,7 @@ export type InMemoryRoomStoreOptions = {
   maxRooms: number;
 };
 
-export function createInMemoryRoomStore(
-  options: InMemoryRoomStoreOptions,
-): RoomStore {
+export function createInMemoryRoomStore(options: InMemoryRoomStoreOptions): RoomStore {
   const rooms = new Map<string, RoomRecord>();
 
   return {

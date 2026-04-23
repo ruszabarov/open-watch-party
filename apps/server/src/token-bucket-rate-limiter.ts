@@ -56,7 +56,6 @@ function refillBucket(
   now: number,
 ): number {
   const elapsedMs = Math.max(0, now - bucket.lastRefillAt);
-  const replenished =
-    bucket.tokens + (elapsedMs / 1_000) * options.refillRatePerSecond;
+  const replenished = bucket.tokens + (elapsedMs / 1_000) * options.refillRatePerSecond;
   return Math.min(options.capacity, replenished);
 }

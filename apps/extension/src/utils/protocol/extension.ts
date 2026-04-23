@@ -1,8 +1,4 @@
-import type {
-  ConnectionStatus,
-  PartySnapshot,
-  ServiceId,
-} from '@watch-party/shared';
+import type { ConnectionStatus, PartySnapshot, ServiceId } from '@watch-party/shared';
 
 export const DEFAULT_SERVER_URL = __WATCH_PARTY_DEFAULT_SERVER_URL__;
 export const SHOW_SERVER_SETTINGS = __WATCH_PARTY_SHOW_SERVER_SETTINGS__;
@@ -42,9 +38,7 @@ export interface PopupState {
   lastWarning: string | null;
 }
 
-export function createDefaultPopupState(
-  overrides: Partial<PopupState> = {},
-): PopupState {
+export function createDefaultPopupState(overrides: Partial<PopupState> = {}): PopupState {
   return {
     settings: {
       serverUrl: DEFAULT_SERVER_URL,
