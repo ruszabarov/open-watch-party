@@ -1,4 +1,3 @@
-import type { ServiceContentContext } from '../protocol/extension';
 import { onMessage, sendMessage } from '../protocol/messaging';
 import type { ServicePlugin } from './types';
 
@@ -17,9 +16,24 @@ export function createServiceContentScript(plugin: ServicePlugin) {
     matches: [...plugin.contentMatches],
     main() {
       const adapter = plugin.createAdapter();
+      let lastReadyMediaKey: string | null = null;
 
       const stopObserving = adapter.observe(
         (context) => {
+          const readyMediaKey =
+            context.playbackReady && context.mediaId
+              ? `${context.href}::${context.mediaId}`
+              : null;
+
+          if (
+            readyMediaKey &&
+            lastReadyMediaKey &&
+            readyMediaKey !== lastReadyMediaKey
+          ) {
+            void sendMessage('content:request-sync').catch(() => undefined);
+          }
+
+          lastReadyMediaKey = readyMediaKey;
           void sendMessage('content:context', context).catch(() => undefined);
         },
         (update) => {

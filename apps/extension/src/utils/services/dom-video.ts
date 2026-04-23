@@ -38,14 +38,77 @@ const VIDEO_EVENTS = [
   'ended',
 ] as const;
 
-// URL transitions we can hear about without page reload. The Navigation API
-// covers in-page `history.pushState` on Chromium; `popstate`/`hashchange`
-// cover back/forward and anchor navigation everywhere.
-const URL_EVENTS = ['popstate', 'hashchange'] as const;
-
 interface NavigationEventTarget {
   addEventListener(type: 'navigatesuccess', listener: () => void): void;
   removeEventListener(type: 'navigatesuccess', listener: () => void): void;
+}
+
+interface DomPlaybackState {
+  readonly video: HTMLVideoElement | null;
+  readonly mediaId: string | undefined;
+  readonly mediaTitle: string;
+  readonly isWatchPage: boolean;
+}
+
+function buildPlaybackState(
+  getVideo: () => HTMLVideoElement | null,
+  matchMediaId: (location: Location) => string | undefined,
+  getMediaTitle: () => string,
+): DomPlaybackState {
+  const video = getVideo();
+  const mediaId = matchMediaId(window.location);
+
+  return {
+    video,
+    mediaId,
+    mediaTitle: getMediaTitle(),
+    isWatchPage: Boolean(mediaId),
+  };
+}
+
+function buildContextFromState(
+  state: DomPlaybackState,
+  config: DomVideoAdapterConfig,
+): ServiceContentContext {
+  const { video, mediaId, mediaTitle, isWatchPage } = state;
+
+  return {
+    serviceId: config.serviceId,
+    href: window.location.href,
+    title: document.title,
+    mediaId,
+    mediaTitle,
+    playbackReady: Boolean(isWatchPage && video),
+    playing: video ? !video.paused : false,
+    positionSec: video ? Number(video.currentTime.toFixed(3)) : 0,
+    issue: !isWatchPage
+      ? config.issueWhenNoMedia
+      : video
+        ? undefined
+        : config.issueWhenPlayerNotReady,
+  };
+}
+
+function getContextSignature(context: ServiceContentContext): string {
+  return JSON.stringify([
+    context.href,
+    context.mediaId,
+    context.mediaTitle,
+    context.playbackReady,
+    context.playing,
+    context.issue,
+  ]);
+}
+
+function observeUrlChanges(onChange: () => void): () => void {
+  const navigation = (window as unknown as {
+    navigation: NavigationEventTarget;
+  }).navigation;
+  navigation.addEventListener('navigatesuccess', onChange);
+
+  return () => {
+    navigation.removeEventListener('navigatesuccess', onChange);
+  };
 }
 
 /**
@@ -53,7 +116,7 @@ interface NavigationEventTarget {
  * on its watch page. Fully event-driven — no polling. It observes:
  *   - DOM structure (the <video> being added/removed/swapped by an SPA),
  *   - `<title>` text (so the popup label stays in sync),
- *   - URL changes (popstate/hashchange + Navigation API for pushState),
+ *   - URL changes via the Navigation API,
  *   - the video element's own playback events.
  * Services only need to supply matchers + UI copy.
  */
@@ -66,28 +129,10 @@ export function createDomVideoAdapter(
     config.matchMediaTitle?.(document) ?? document.title;
 
   const buildContext = (): ServiceContentContext => {
-    const video = getVideo();
-    const mediaId = config.matchMediaId(window.location);
-    const isWatchPage = Boolean(mediaId);
-
-    return {
-      serviceId: config.serviceId,
-      href: window.location.href,
-      title: document.title,
-      mediaId,
-      mediaTitle: getMediaTitle(),
-      playbackReady: Boolean(isWatchPage && video),
-      playing: video ? !video.paused : false,
-      positionSec: video ? Number(video.currentTime.toFixed(3)) : 0,
-      issue: !isWatchPage
-        ? config.issueWhenNoMedia
-        : video
-          ? undefined
-          : config.issueWhenPlayerNotReady,
-    };
+    const state = buildPlaybackState(getVideo, config.matchMediaId, getMediaTitle);
+    return buildContextFromState(state, config);
   };
 
-  let activeVideo: HTMLVideoElement | null = null;
   let suppressLocalCommandsUntil = 0;
 
   return {
@@ -95,26 +140,18 @@ export function createDomVideoAdapter(
     getContext: buildContext,
 
     observe(onContext, onPlaybackUpdate) {
+      let activeVideo: HTMLVideoElement | null = null;
       let lastSignature = '';
 
-      const emitContext = () => {
-        const context = buildContext();
-        const signature = JSON.stringify([
-          context.href,
-          context.mediaId,
-          context.mediaTitle,
-          context.playbackReady,
-          context.playing,
-          context.issue,
-        ]);
+      const emitContext = (context: ServiceContentContext) => {
+        const signature = getContextSignature(context);
         if (signature === lastSignature) return;
         lastSignature = signature;
         onContext(context);
       };
 
-      const emitPlaybackUpdate = () => {
+      const emitPlaybackUpdate = (context: ServiceContentContext) => {
         if (Date.now() < suppressLocalCommandsUntil) return;
-        const context = buildContext();
         if (!context.playbackReady || !context.mediaId) return;
         onPlaybackUpdate({
           serviceId: config.serviceId,
@@ -127,8 +164,9 @@ export function createDomVideoAdapter(
       };
 
       const handleVideoEvent = () => {
-        emitContext();
-        emitPlaybackUpdate();
+        const context = buildContext();
+        emitContext(context);
+        emitPlaybackUpdate(context);
       };
 
       const bindActiveVideo = () => {
@@ -154,7 +192,7 @@ export function createDomVideoAdapter(
         rafId = requestAnimationFrame(() => {
           rafId = null;
           bindActiveVideo();
-          emitContext();
+          emitContext(buildContext());
         });
       };
 
@@ -176,25 +214,16 @@ export function createDomVideoAdapter(
         characterData: true,
       });
 
-      for (const e of URL_EVENTS) {
-        window.addEventListener(e, refresh);
-      }
-      const navigation = (window as unknown as {
-        navigation?: NavigationEventTarget;
-      }).navigation;
-      navigation?.addEventListener('navigatesuccess', refresh);
+      const stopObservingUrl = observeUrlChanges(refresh);
 
       bindActiveVideo();
-      emitContext();
+      emitContext(buildContext());
 
       return () => {
         structureObserver.disconnect();
         titleObserver.disconnect();
         if (rafId !== null) cancelAnimationFrame(rafId);
-        for (const e of URL_EVENTS) {
-          window.removeEventListener(e, refresh);
-        }
-        navigation?.removeEventListener('navigatesuccess', refresh);
+        stopObservingUrl();
         if (activeVideo) {
           for (const e of VIDEO_EVENTS) {
             activeVideo.removeEventListener(e, handleVideoEvent);
