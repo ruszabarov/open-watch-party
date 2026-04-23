@@ -3,12 +3,17 @@ import { describe, expect, it } from 'vitest';
 import {
   applyPlaybackUpdate,
   createRoomState,
+  normalizeRoomCode,
   resolvePlaybackState,
   toPartySnapshot,
   upsertRoomMember,
 } from './index';
 
 describe('room reducer', () => {
+  it('normalizes room codes for lookups and joins', () => {
+    expect(normalizeRoomCode(' ab12cd ')).toBe('AB12CD');
+  });
+
   it('orders playback updates by server receive sequence', () => {
     const room = createRoomState(
       'ROOM01',

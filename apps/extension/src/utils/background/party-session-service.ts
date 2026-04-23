@@ -1,4 +1,5 @@
 import { io, type Socket } from 'socket.io-client';
+import { normalizeRoomCode } from '@watch-party/shared';
 
 import type {
   ClientToServerEvents,
@@ -90,7 +91,7 @@ export class PartySessionService {
     }
 
     const response = await this.emitRoomJoin({
-      roomCode: roomCode.trim().toUpperCase(),
+      roomCode: normalizeRoomCode(roomCode),
       memberId: this.ensureMemberId(),
       memberName: this.state.settings.memberName,
     });

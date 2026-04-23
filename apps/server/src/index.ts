@@ -4,6 +4,7 @@ import {
   applyPlaybackUpdate,
   createRoomCode,
   createRoomState,
+  normalizeRoomCode,
   roomHasMember,
   type ClientToServerEvents,
   type RoomState,
@@ -59,7 +60,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('room:join', (payload, acknowledge) => {
-    const roomCode = payload.roomCode.trim().toUpperCase();
+    const roomCode = normalizeRoomCode(payload.roomCode);
     const room = rooms.get(roomCode);
 
     if (!room) {
@@ -87,12 +88,12 @@ io.on('connection', (socket) => {
     leaveRoom(payload.roomCode, payload.memberId);
     acknowledge({
       ok: true,
-      data: { roomCode: payload.roomCode.trim().toUpperCase() },
+      data: { roomCode: normalizeRoomCode(payload.roomCode) },
     });
   });
 
   socket.on('playback:update', (payload, acknowledge) => {
-    const room = rooms.get(payload.roomCode.trim().toUpperCase());
+    const room = rooms.get(normalizeRoomCode(payload.roomCode));
 
     if (!room) {
       acknowledge({ ok: false, error: 'Room not found.' });
@@ -170,7 +171,7 @@ function removeSocketSession(socketId: string): void {
 }
 
 function leaveRoom(roomCodeValue: string, memberId: string): void {
-  const roomCode = roomCodeValue.trim().toUpperCase();
+  const roomCode = normalizeRoomCode(roomCodeValue);
   const room = rooms.get(roomCode);
 
   if (!room) {

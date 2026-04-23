@@ -20,6 +20,10 @@ export interface RoomState {
 const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ROOM_CODE_LENGTH = 6;
 
+export function normalizeRoomCode(roomCode: string): string {
+  return roomCode.trim().toUpperCase();
+}
+
 export function createRoomCode(): string {
   const values = new Uint32Array(ROOM_CODE_LENGTH);
   globalThis.crypto.getRandomValues(values);
