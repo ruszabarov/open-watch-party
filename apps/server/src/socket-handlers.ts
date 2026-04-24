@@ -209,7 +209,7 @@ function handleRoomCreate(
   upsertRoomMember(room, payload.memberId, payload.memberName);
   touchRoomActivity(state, room);
 
-  bindSocketToRoom(io, state, socket, room.roomCode, payload.memberId);
+  moveSocketSession(io, state, socket, room.roomCode, payload.memberId);
 
   const snapshot = toPartySnapshot(room);
   acknowledge({ ok: true, data: { memberId: payload.memberId, snapshot } });
@@ -239,7 +239,7 @@ function handleRoomJoin(
   upsertRoomMember(room, payload.memberId, payload.memberName);
   touchRoomActivity(state, room);
 
-  bindSocketToRoom(io, state, socket, payload.roomCode, payload.memberId);
+  moveSocketSession(io, state, socket, payload.roomCode, payload.memberId);
 
   const snapshot = toPartySnapshot(room);
   acknowledge({ ok: true, data: { memberId: payload.memberId, snapshot } });
@@ -328,16 +328,24 @@ function getSocketSession(state: RealtimeState, socketId: string): SessionRecord
   return state.sessionsBySocket.get(socketId);
 }
 
-function bindSocketToRoom(
+function moveSocketSession(
   io: RealtimeServer,
   state: RealtimeState,
   socket: ConnectionSocket,
-  roomCode: string,
+  roomCodeValue: string,
   memberId: string,
 ): void {
+  const roomCode = normalizeRoomCode(roomCodeValue);
   const priorSession = state.sessionsBySocket.get(socket.id);
-  if (priorSession && priorSession.roomCode !== roomCode) {
-    socket.leave(priorSession.roomCode);
+
+  if (priorSession && (priorSession.roomCode !== roomCode || priorSession.memberId !== memberId)) {
+    removeSocketSession(state, socket.id);
+
+    if (priorSession.roomCode !== roomCode) {
+      socket.leave(priorSession.roomCode);
+    }
+
+    leaveRoom(io, state, priorSession.roomCode, priorSession.memberId);
   }
 
   const socketId = socket.id;
@@ -346,6 +354,7 @@ function bindSocketToRoom(
 
   if (priorSocketId && priorSocketId !== socketId) {
     io.sockets.sockets.get(priorSocketId)?.disconnect(true);
+    state.playbackUpdateRateLimiter.reset(priorSocketId);
     state.sessionsBySocket.delete(priorSocketId);
   }
 

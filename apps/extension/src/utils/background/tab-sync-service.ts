@@ -163,6 +163,18 @@ export class TabSyncService {
       ? getPlugin(this.deps.state.session.serviceId)
       : null;
 
+    const controlledContext = this.getControlledTabContext();
+    if (
+      controlledContext?.playbackReady &&
+      controlledContext.mediaId &&
+      controlledContext.mediaId !== room.playback.mediaId
+    ) {
+      await this.navigateControlledTabToRoom(this.deps.state.controlledTabId, room.watchUrl, {
+        active: false,
+      });
+      return;
+    }
+
     const result = await this.applySnapshotToTab(this.deps.state.controlledTabId, room);
 
     if (!result) {
@@ -180,13 +192,20 @@ export class TabSyncService {
     this.deps.state.lastWarning = result.applied ? null : (result.reason ?? 'Sync was skipped.');
   }
 
-  async navigateControlledTabToRoom(tabId: number, watchUrl: string): Promise<void> {
+  async navigateControlledTabToRoom(
+    tabId: number,
+    watchUrl: string,
+    options: { active?: boolean } = {},
+  ): Promise<void> {
     this.pendingControlledNavigationUrl = watchUrl;
     this.deps.state.lastWarning = null;
     emitStateChanged(this.deps.state);
 
     try {
-      await browser.tabs.update(tabId, { url: watchUrl, active: true });
+      await browser.tabs.update(tabId, {
+        url: watchUrl,
+        ...(options.active === undefined ? { active: true } : { active: options.active }),
+      });
     } catch {
       this.pendingControlledNavigationUrl = null;
       throw new Error('Could not open the room video in the current tab.');

@@ -603,7 +603,7 @@ describe('socket handlers', () => {
     expect(state.activeSocketByMember.get(`${room.roomCode}:member-a`)).toBe(nextSocket.id);
   });
 
-  it('leaves the prior room before joining a new room on the same socket', () => {
+  it('moves the prior room membership before joining a new room on the same socket', () => {
     const io = new FakeIo();
     const socket = new FakeSocket('socket-5');
     const state = createRealtimeState();
@@ -633,6 +633,7 @@ describe('socket handlers', () => {
     });
 
     upsertRoomMember(firstRoom, 'member-a', 'Member A');
+    upsertRoomMember(firstRoom, 'member-c', 'Member C');
     upsertRoomMember(secondRoom, 'member-b', 'Member B');
     state.roomStore.set({ room: firstRoom, lastActivity: Date.now() });
     state.roomStore.set({ room: secondRoom, lastActivity: Date.now() });
@@ -665,10 +666,18 @@ describe('socket handlers', () => {
     expect(response).toMatchObject({ ok: true });
     expect(socket.leftRooms).toEqual([firstRoom.roomCode]);
     expect(socket.joinedRooms).toEqual([secondRoom.roomCode]);
+    expect(firstRoom.members.has('member-a')).toBe(false);
+    expect(firstRoom.members.has('member-c')).toBe(true);
+    expect(state.activeSocketByMember.has(`${firstRoom.roomCode}:member-a`)).toBe(false);
     expect(state.sessionsBySocket.get(socket.id)).toMatchObject({
       socketId: socket.id,
       roomCode: secondRoom.roomCode,
       memberId: 'member-b',
+    });
+    expect(io.emitted).toHaveLength(1);
+    expect(io.emitted[0]).toMatchObject({
+      room: firstRoom.roomCode,
+      event: 'room:state',
     });
   });
 
