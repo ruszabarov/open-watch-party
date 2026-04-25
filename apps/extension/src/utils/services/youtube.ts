@@ -91,10 +91,7 @@ export const YOUTUBE_SERVICE: ServicePlugin = {
   apply: (_video, target) => {
     const player = getYoutubePlayerApi();
     if (!player) {
-      return Promise.resolve({
-        ok: false,
-        reason: 'YouTube player is still loading.',
-      });
+      return Promise.resolve(null);
     }
 
     player.seekTo(target.positionSec, true);

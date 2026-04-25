@@ -121,6 +121,11 @@ export function runServiceContentScript(plugin: ServicePlugin) {
         buildPlaybackUpdate(readPlaybackState(), plugin);
 
       let lastReadyMediaKey: string | null = null;
+      let pendingAppliedPlaybackState: {
+        readonly mediaId: string;
+        readonly playing: boolean;
+        readonly positionSec: number;
+      } | null = null;
 
       const emitContentContext = (context: ServiceContentContext) => {
         const readyMediaKey =
@@ -137,6 +142,23 @@ export function runServiceContentScript(plugin: ServicePlugin) {
       const emitPlaybackUpdate = (state: DomPlaybackState) => {
         const update = buildPlaybackUpdate(state, plugin);
         if (!update) return;
+
+        if (pendingAppliedPlaybackState) {
+          if (
+            pendingAppliedPlaybackState.mediaId === update.mediaId &&
+            pendingAppliedPlaybackState.playing === update.playing &&
+            Math.abs(pendingAppliedPlaybackState.positionSec - update.positionSec) <=
+              SEEK_CORRECTION_THRESHOLD_SEC
+          ) {
+            pendingAppliedPlaybackState = null;
+            return;
+          }
+
+          if (update.mediaId !== pendingAppliedPlaybackState.mediaId) {
+            pendingAppliedPlaybackState = null;
+          }
+        }
+
         void sendMessage('content:playback-update', update).catch(() => undefined);
       };
 
@@ -245,10 +267,19 @@ export function runServiceContentScript(plugin: ServicePlugin) {
           };
         }
 
-        const playbackResult = await (plugin.apply ?? applyHtml5Playback)(state.video, {
-          positionSec: data.snapshot.playback.positionSec,
-          playing: data.snapshot.playback.playing,
-        });
+        let playbackResult = plugin.apply
+          ? await plugin.apply(state.video, {
+              positionSec: data.snapshot.playback.positionSec,
+              playing: data.snapshot.playback.playing,
+            })
+          : null;
+
+        if (!playbackResult) {
+          playbackResult = await applyHtml5Playback(state.video, {
+            positionSec: data.snapshot.playback.positionSec,
+            playing: data.snapshot.playback.playing,
+          });
+        }
 
         if (!playbackResult.ok) {
           return {
@@ -257,6 +288,12 @@ export function runServiceContentScript(plugin: ServicePlugin) {
             context: readContext(),
           };
         }
+
+        pendingAppliedPlaybackState = {
+          mediaId: data.snapshot.playback.mediaId,
+          playing: data.snapshot.playback.playing,
+          positionSec: data.snapshot.playback.positionSec,
+        };
 
         const appliedContext = readContext();
         return { applied: true, context: appliedContext };

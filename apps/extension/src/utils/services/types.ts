@@ -37,5 +37,5 @@ export interface ServicePlugin {
   apply?(
     video: HTMLVideoElement,
     target: { positionSec: number; playing: boolean },
-  ): Promise<{ ok: true } | { ok: false; reason: string }>;
+  ): Promise<{ ok: true } | { ok: false; reason: string } | null>;
 }
