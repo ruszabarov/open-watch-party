@@ -1,4 +1,5 @@
 import { browser } from 'wxt/browser';
+import { ZodType } from 'zod';
 import {
   createRoomRequestSchema,
   joinRoomRequestSchema,
@@ -423,7 +424,7 @@ export class PartySessionService {
     return response.data;
   }
 
-  private validateOutboundPayload<T>(schema: ZodSchemaLike<T>, payload: unknown): T {
+  private validateOutboundPayload<T>(schema: ZodType<T>, payload: unknown): T {
     const result = schema.safeParse(payload);
     if (!result.success) {
       log.warn('session:invalid_outbound_payload');
@@ -433,7 +434,3 @@ export class PartySessionService {
     return result.data;
   }
 }
-
-type ZodSchemaLike<T> = {
-  safeParse(payload: unknown): { success: true; data: T } | { success: false };
-};
