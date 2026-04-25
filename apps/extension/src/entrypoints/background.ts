@@ -7,53 +7,63 @@ import { PartySessionService } from '../utils/background/party-session-service';
 import { POPUP_BACKGROUND_SERVICE_KEY } from '../utils/background/popup-background-service';
 import { SettingsStore } from '../utils/background/settings-store';
 import { createBackgroundState } from '../utils/background/state';
-import { TabSyncService } from '../utils/background/tab-sync-service';
+import { ActiveTabTracker } from '../utils/background/active-tab-tracker';
+import { ControlledTabService } from '../utils/background/controlled-tab-service';
 
 export default defineBackground(() => {
   const state = createBackgroundState();
   let partySessionService!: PartySessionService;
 
   const settingsStore = new SettingsStore(state);
-  const tabSyncService = new TabSyncService({
-    state,
-    getRoom: () => state.room,
-    onControlledPlaybackUpdate: async (update) => {
-      await partySessionService.sendPlaybackUpdate(update, true);
+  const activeTabTracker = new ActiveTabTracker(state);
+  const controlledTabService = new ControlledTabService(
+    {
+      state,
+      getRoom: () => state.room,
+      onControlledPlaybackUpdate: async (update) => {
+        await partySessionService.sendPlaybackUpdate(update, true);
+      },
     },
-  });
-  partySessionService = new PartySessionService(state, settingsStore, tabSyncService);
+    activeTabTracker,
+  );
+  partySessionService = new PartySessionService(state, settingsStore, controlledTabService);
 
   registerService(
     POPUP_BACKGROUND_SERVICE_KEY,
     createPopupBackgroundService(state, settingsStore, partySessionService),
   );
 
-  registerEventHandlers(tabSyncService);
-  tabSyncService.registerEventHandlers();
+  registerEventHandlers(activeTabTracker, controlledTabService);
+  activeTabTracker.registerEventHandlers();
+  controlledTabService.registerEventHandlers();
 
   void (async () => {
     await settingsStore.hydrate();
-    await tabSyncService.refreshActiveTab();
+    await activeTabTracker.refreshActiveTab();
     await partySessionService.connectForStoredSession();
   })();
 });
 
-function registerEventHandlers(tabSyncService: TabSyncService): void {
+function registerEventHandlers(
+  activeTabTracker: ActiveTabTracker,
+  controlledTabService: ControlledTabService,
+): void {
   onMessage('content:context', ({ data, sender }) => {
     if (sender.tab?.id != null) {
-      tabSyncService.recordContentContext(sender.tab.id, data);
+      activeTabTracker.recordContentContext(sender.tab.id, data);
+      controlledTabService.recordContentContext(sender.tab.id, data);
     }
   });
 
   onMessage('content:playback-update', async ({ data, sender }) => {
     if (sender.tab?.id != null) {
-      await tabSyncService.relayControlledPlaybackUpdate(sender.tab.id, data);
+      await controlledTabService.relayControlledPlaybackUpdate(sender.tab.id, data);
     }
   });
 
   onMessage('content:request-sync', async ({ sender }) => {
     if (sender.tab?.id != null) {
-      await tabSyncService.requestSync(sender.tab.id);
+      await controlledTabService.requestSync(sender.tab.id);
     }
   });
 }

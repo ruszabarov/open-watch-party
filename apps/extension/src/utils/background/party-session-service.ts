@@ -23,7 +23,7 @@ import { createRealtimeConnection, type RealtimeConnection } from './realtime-co
 import type { BackgroundState } from './state';
 import { normalizeServerUrl } from './state';
 import type { SettingsStore } from './settings-store';
-import type { TabSyncService } from './tab-sync-service';
+import type { ControlledTabService } from './controlled-tab-service';
 
 export class PartySessionService {
   private connection: RealtimeConnection | null = null;
@@ -31,7 +31,7 @@ export class PartySessionService {
   constructor(
     private readonly state: BackgroundState,
     private readonly settingsStore: SettingsStore,
-    private readonly tabSync: TabSyncService,
+    private readonly controlledTab: ControlledTabService,
   ) {}
 
   async connectForStoredSession(): Promise<void> {
@@ -60,8 +60,7 @@ export class PartySessionService {
   }
 
   async createRoom(): Promise<void> {
-    await this.tabSync.refreshActiveTab(false);
-    const { context, playback } = await this.tabSync.requireControllableWatchTab();
+    const { context, playback } = await this.controlledTab.requireControllableWatchTab();
 
     const response = await this.emitRoomCreate({
       memberId: this.ensureMemberId(),
@@ -72,15 +71,11 @@ export class PartySessionService {
 
     this.state.controlledTabId = this.state.activeTab.tabId;
     await this.applyRoomResponse(response);
-    await this.tabSync.applySnapshotToControlledTab();
+    await this.controlledTab.applySnapshotToControlledTab();
   }
 
   async joinRoom(roomCode: string): Promise<void> {
-    await this.tabSync.refreshActiveTab(false);
-    const tabId = this.state.activeTab.tabId;
-    if (tabId == null) {
-      throw new Error('Open a browser tab before joining a room.');
-    }
+    const tabId = await this.controlledTab.getFreshActiveTabId();
 
     const response = await this.emitRoomJoin({
       roomCode: normalizeRoomCode(roomCode),
@@ -92,7 +87,7 @@ export class PartySessionService {
     await this.applyRoomResponse(response);
 
     try {
-      await this.tabSync.navigateControlledTabToRoom(tabId, response.snapshot.watchUrl);
+      await this.controlledTab.navigateControlledTabToRoom(tabId, response.snapshot.watchUrl);
     } catch (error) {
       await this.leaveRoom();
       throw error;
@@ -125,7 +120,7 @@ export class PartySessionService {
       throw new Error('Join or create a room first.');
     }
 
-    const playbackContext = this.tabSync.getControlledTabContext();
+    const playbackContext = this.controlledTab.getControlledTabContext();
     if (playbackContext?.mediaId && playbackContext.mediaId !== update.mediaId) {
       this.state.lastWarning = 'Local title no longer matches the active room.';
       emitStateChanged(this.state);
@@ -191,7 +186,7 @@ export class PartySessionService {
 
       this.state.room = snapshot;
       this.state.lastWarning = null;
-      await this.tabSync.applySnapshotToControlledTab();
+      await this.controlledTab.applySnapshotToControlledTab();
       emitStateChanged(this.state);
     });
   }
@@ -210,7 +205,7 @@ export class PartySessionService {
       });
 
       await this.applyRoomResponse(response);
-      await this.tabSync.applySnapshotToControlledTab();
+      await this.controlledTab.applySnapshotToControlledTab();
     } catch (error) {
       this.state.lastError = getErrorMessage(error);
       this.state.connectionStatus = 'error';

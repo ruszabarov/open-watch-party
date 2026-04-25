@@ -1,14 +1,11 @@
 import { browser } from 'wxt/browser';
 import type { PartySnapshot, PlaybackUpdateDraft } from '@open-watch-party/shared';
-
 import type { ApplySnapshotResult, ServiceContentContext } from '../protocol/extension';
 import { sendMessage } from '../protocol/messaging';
-import { getPlugin, findPluginByUrl } from '../services/registry';
+import { getPlugin } from '../services/registry';
 import { emitStateChanged } from './notifier';
 import type { BackgroundState } from './state';
-import { createEmptyActiveTabSummary } from './state';
-
-type BrowserTab = Parameters<Parameters<typeof browser.tabs.onUpdated.addListener>[0]>[2];
+import type { ActiveTabTracker } from './active-tab-tracker';
 
 type ReadyServiceContentContext = ServiceContentContext & {
   playbackReady: true;
@@ -26,7 +23,7 @@ interface ControllableWatchTab {
   playback: PlaybackUpdateDraft;
 }
 
-interface TabSyncDependencies {
+interface ControlledTabDependencies {
   readonly state: BackgroundState;
   readonly getRoom: () => PartySnapshot | null;
   readonly onControlledPlaybackUpdate: (
@@ -35,23 +32,17 @@ interface TabSyncDependencies {
   ) => Promise<void>;
 }
 
-export class TabSyncService {
-  private readonly contentContexts = new Map<number, ServiceContentContext>();
-
+export class ControlledTabService {
   private pendingControlledNavigationUrl: string | null = null;
+  private controlledContext: ServiceContentContext | null = null;
 
-  constructor(private readonly deps: TabSyncDependencies) {}
+  constructor(
+    private readonly deps: ControlledTabDependencies,
+    private readonly activeTabTracker: ActiveTabTracker,
+  ) {}
 
   registerEventHandlers(): void {
-    browser.tabs.onActivated.addListener(async () => {
-      await this.refreshActiveTab();
-    });
-
-    browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-      if (changeInfo.status === 'complete' || changeInfo.url) {
-        await this.refreshActiveTab();
-      }
-
+    browser.tabs.onUpdated.addListener((tabId, _changeInfo, tab) => {
       if (
         tabId === this.deps.state.controlledTabId &&
         this.pendingControlledNavigationUrl &&
@@ -74,9 +65,8 @@ export class TabSyncService {
     });
 
     browser.tabs.onRemoved.addListener((tabId) => {
-      this.contentContexts.delete(tabId);
-
       if (this.deps.state.controlledTabId === tabId) {
+        this.controlledContext = null;
         const sessionPlugin = this.deps.state.session
           ? getPlugin(this.deps.state.session.serviceId)
           : null;
@@ -90,48 +80,13 @@ export class TabSyncService {
     });
   }
 
-  async refreshActiveTab(notify = true): Promise<void> {
-    const [activeTab] = await browser.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-
-    if (!activeTab?.id) {
-      this.deps.state.activeTab = createEmptyActiveTabSummary();
-      this.deps.state.contentContext = null;
-      if (notify) {
-        emitStateChanged(this.deps.state);
-      }
-      return;
-    }
-
-    this.deps.state.activeTab = summarizeTab(activeTab);
-    this.deps.state.contentContext = this.contentContexts.get(activeTab.id) ?? null;
-
-    if (this.deps.state.activeTab.activeServiceId) {
-      const contentContext = await this.requestContextFromTab(activeTab.id);
-
-      if (contentContext) {
-        this.deps.state.contentContext = contentContext;
-        this.contentContexts.set(activeTab.id, contentContext);
-      }
-    }
-
-    if (notify) {
+  recordContentContext(tabId: number, context: ServiceContentContext): void {
+    const isControlledTab = this.deps.state.controlledTabId === tabId;
+    if (isControlledTab) {
+      this.controlledContext = context;
+      this.deps.state.contentContext = context;
       emitStateChanged(this.deps.state);
     }
-  }
-
-  recordContentContext(tabId: number, context: ServiceContentContext): void {
-    this.contentContexts.set(tabId, context);
-
-    const isControlledTab = this.deps.state.controlledTabId === tabId;
-    const isActiveTab = this.deps.state.activeTab.tabId === tabId;
-    if (isControlledTab || isActiveTab) {
-      this.deps.state.contentContext = context;
-    }
-
-    emitStateChanged(this.deps.state);
   }
 
   async relayControlledPlaybackUpdate(tabId: number, update: PlaybackUpdateDraft): Promise<void> {
@@ -168,10 +123,9 @@ export class TabSyncService {
       ? getPlugin(this.deps.state.session.serviceId)
       : null;
 
-    const controlledContext = this.getControlledTabContext();
     if (
-      controlledContext &&
-      controlledContext.mediaId !== room.playback.mediaId
+      this.controlledContext &&
+      this.controlledContext.mediaId !== room.playback.mediaId
     ) {
       await this.navigateControlledTabToRoom(this.deps.state.controlledTabId, room.watchUrl, {
         active: false,
@@ -189,7 +143,7 @@ export class TabSyncService {
     }
 
     if (result.context) {
-      this.contentContexts.set(this.deps.state.controlledTabId, result.context);
+      this.controlledContext = result.context;
       this.deps.state.contentContext = result.context;
     }
 
@@ -217,6 +171,8 @@ export class TabSyncService {
   }
 
   async requireControllableWatchTab(): Promise<ControllableWatchTab> {
+    await this.activeTabTracker.refreshActiveTab(false);
+
     if (!this.deps.state.activeTab.tabId || !this.deps.state.activeTab.isWatchPage) {
       throw new Error('Open a supported watch page before starting a party.');
     }
@@ -244,17 +200,17 @@ export class TabSyncService {
     return { context, playback };
   }
 
-  getControlledTabContext(): ServiceContentContext | null {
-    return this.contentContexts.get(this.deps.state.controlledTabId ?? -1) ?? null;
+  async getFreshActiveTabId(): Promise<number> {
+    await this.activeTabTracker.refreshActiveTab(false);
+    const tabId = this.deps.state.activeTab.tabId;
+    if (tabId == null) {
+      throw new Error('Open a browser tab before joining a room.');
+    }
+    return tabId;
   }
 
-  private async requestContextFromTab(tabId: number): Promise<ServiceContentContext | null> {
-    try {
-      const response = await sendMessage('party:request-context', undefined, { tabId });
-      return response ?? null;
-    } catch {
-      return null;
-    }
+  getControlledTabContext(): ServiceContentContext | null {
+    return this.controlledContext;
   }
 
   private async requestPlaybackFromTab(tabId: number): Promise<PlaybackUpdateDraft | null> {
@@ -277,17 +233,4 @@ export class TabSyncService {
       return null;
     }
   }
-}
-
-function summarizeTab(tab: BrowserTab) {
-  const url = tab.url ?? '';
-  const classification = findPluginByUrl(url);
-
-  return {
-    tabId: tab.id ?? null,
-    title: tab.title ?? '',
-    url,
-    activeServiceId: classification?.plugin.id ?? null,
-    isWatchPage: classification?.isWatchPage ?? false,
-  };
 }
