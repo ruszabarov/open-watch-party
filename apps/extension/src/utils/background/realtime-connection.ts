@@ -1,31 +1,35 @@
 import { io, type Socket } from 'socket.io-client';
-import { match, P } from 'ts-pattern';
 import type {
+  Acknowledge,
   ClientToServerEvents,
   ConnectionStatus,
-  CreateRoomRequest,
-  JoinRoomRequest,
-  LeaveRoomRequest,
   OperationResult,
   PartySnapshot,
-  PlaybackUpdateRequest,
-  RoomResponse,
   ServerToClientEvents,
 } from '@open-watch-party/shared';
 
 const ACK_TIMEOUT_MS = 5_000;
 const CONNECT_TIMEOUT_MS = 5_000;
 
-type RequestArgs =
-  | [event: 'room:create', payload: CreateRoomRequest]
-  | [event: 'room:join', payload: JoinRoomRequest]
-  | [event: 'room:leave', payload: LeaveRoomRequest]
-  | [event: 'playback:update', payload: PlaybackUpdateRequest];
-
-type RequestResult =
-  | OperationResult<RoomResponse>
-  | OperationResult<{ roomCode: string }>
-  | OperationResult<PartySnapshot>;
+type RequestEvent = keyof ClientToServerEvents;
+type RequestPayload<TEvent extends RequestEvent> = ClientToServerEvents[TEvent] extends (
+  payload: infer TPayload,
+  acknowledge: Acknowledge<unknown>,
+) => void
+  ? TPayload
+  : never;
+type RequestResponse<TEvent extends RequestEvent> = ClientToServerEvents[TEvent] extends (
+  payload: unknown,
+  acknowledge: Acknowledge<infer TResponse>,
+) => void
+  ? OperationResult<TResponse>
+  : never;
+type AckEmitter = {
+  emitWithAck<TEvent extends RequestEvent>(
+    event: TEvent,
+    payload: RequestPayload<TEvent>,
+  ): Promise<RequestResponse<TEvent>>;
+};
 
 export class RealtimeConnection {
   private readonly socket: Socket<ServerToClientEvents, ClientToServerEvents>;
@@ -36,30 +40,27 @@ export class RealtimeConnection {
 
   private currentStatus: ConnectionStatus = 'connecting';
   private currentErrorMessage: string | undefined;
-  private hasConnectedBefore = false;
-  private manuallyDisconnected = false;
 
   constructor(readonly serverUrl: string) {
     this.socket = io(serverUrl, {
       autoConnect: true,
       reconnection: true,
       transports: ['websocket'],
+      timeout: CONNECT_TIMEOUT_MS,
     });
 
     this.socket.on('connect', () => {
-      const isReconnect = this.hasConnectedBefore;
-      this.hasConnectedBefore = true;
       this.setStatus('connected');
+    });
 
-      if (isReconnect) {
-        for (const handler of this.reconnectHandlers) {
-          void handler();
-        }
+    this.socket.io.on('reconnect', () => {
+      for (const handler of this.reconnectHandlers) {
+        void handler();
       }
     });
 
     this.socket.on('disconnect', () => {
-      this.setStatus(this.manuallyDisconnected ? 'disconnected' : 'reconnecting');
+      this.setStatus(this.socket.active ? 'reconnecting' : 'disconnected');
     });
 
     this.socket.on('connect_error', (error) => {
@@ -67,25 +68,13 @@ export class RealtimeConnection {
     });
   }
 
-  async request(
-    event: 'room:create',
-    payload: CreateRoomRequest,
-  ): Promise<OperationResult<RoomResponse>>;
-  async request(
-    event: 'room:join',
-    payload: JoinRoomRequest,
-  ): Promise<OperationResult<RoomResponse>>;
-  async request(
-    event: 'room:leave',
-    payload: LeaveRoomRequest,
-  ): Promise<OperationResult<{ roomCode: string }>>;
-  async request(
-    event: 'playback:update',
-    payload: PlaybackUpdateRequest,
-  ): Promise<OperationResult<PartySnapshot>>;
-  async request(...args: RequestArgs): Promise<RequestResult> {
+  async request<TEvent extends RequestEvent>(
+    event: TEvent,
+    payload: RequestPayload<TEvent>,
+  ): Promise<RequestResponse<TEvent>> {
     await this.waitForConnect();
-    return this.dispatchRequest(args);
+    const emitter = this.socket.timeout(ACK_TIMEOUT_MS) as AckEmitter;
+    return emitter.emitWithAck(event, payload);
   }
 
   on(event: 'room:state', handler: ServerToClientEvents['room:state']): () => void;
@@ -113,26 +102,7 @@ export class RealtimeConnection {
   }
 
   disconnect(): void {
-    this.manuallyDisconnected = true;
     this.socket.disconnect();
-  }
-
-  private dispatchRequest(args: RequestArgs): Promise<RequestResult> {
-    return match(args)
-      .returnType<Promise<RequestResult>>()
-      .with(['room:create', P.select()], (p) =>
-        this.socket.timeout(ACK_TIMEOUT_MS).emitWithAck('room:create', p),
-      )
-      .with(['room:join', P.select()], (p) =>
-        this.socket.timeout(ACK_TIMEOUT_MS).emitWithAck('room:join', p),
-      )
-      .with(['room:leave', P.select()], (p) =>
-        this.socket.timeout(ACK_TIMEOUT_MS).emitWithAck('room:leave', p),
-      )
-      .with(['playback:update', P.select()], (p) =>
-        this.socket.timeout(ACK_TIMEOUT_MS).emitWithAck('playback:update', p),
-      )
-      .exhaustive();
   }
 
   private waitForConnect(): Promise<void> {
@@ -142,7 +112,6 @@ export class RealtimeConnection {
 
     return new Promise<void>((resolve, reject) => {
       const cleanup = () => {
-        clearTimeout(timeoutId);
         this.socket.off('connect', handleConnect);
         this.socket.off('connect_error', handleConnectError);
       };
@@ -154,10 +123,6 @@ export class RealtimeConnection {
         cleanup();
         reject(error);
       };
-      const timeoutId = setTimeout(() => {
-        cleanup();
-        reject(new Error('Timed out connecting to the realtime server.'));
-      }, CONNECT_TIMEOUT_MS);
 
       this.socket.once('connect', handleConnect);
       this.socket.once('connect_error', handleConnectError);

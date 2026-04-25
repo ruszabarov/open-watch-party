@@ -78,20 +78,17 @@ const titleSchema = z
   .optional()
   .transform((value) => sanitizeOptionalTitle(value));
 
-export const playbackStateInputSchema = z.object({
+export const playbackDraftSchema = z.object({
   serviceId: serviceIdSchema,
   mediaId: mediaIdSchema,
   title: titleSchema,
-  playing: z.boolean(),
   positionSec: positionSchema,
+  playing: z.boolean(),
 });
 
-export const playbackUpdateSchema = z.object({
-  serviceId: serviceIdSchema,
-  mediaId: mediaIdSchema,
-  title: titleSchema,
-  positionSec: positionSchema,
-  playing: z.boolean(),
+export const playbackStateInputSchema = playbackDraftSchema;
+
+export const playbackUpdateSchema = playbackDraftSchema.extend({
   clientSequence: z.number().int().min(0),
 });
 
@@ -119,7 +116,7 @@ export const playbackUpdateRequestSchema = z
 
 export type PlaybackStateInput = z.output<typeof playbackStateInputSchema>;
 export type PlaybackUpdate = z.output<typeof playbackUpdateSchema>;
-export type PlaybackUpdateDraft = Omit<PlaybackUpdate, 'clientSequence'>;
+export type PlaybackUpdateDraft = z.output<typeof playbackDraftSchema>;
 export type CreateRoomRequest = z.output<typeof createRoomRequestSchema>;
 export type JoinRoomRequest = z.output<typeof joinRoomRequestSchema>;
 export type LeaveRoomRequest = z.output<typeof leaveRoomRequestSchema>;
