@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { OperationResult, RoomResponse } from '@open-watch-party/shared';
 import { createRoomState, MAX_TITLE_LENGTH, upsertRoomMember } from '@open-watch-party/shared';
 
-import { createConnectionHandler, createRealtimeState } from '../src/socket-handlers';
+import {
+  createConnectionHandler,
+  createRealtimeState,
+  type SessionRecord,
+} from '../src/socket-handlers';
+import { createPlaybackUpdateTokenConsumer } from '../src/playback-update-rate-limiter';
 
 type RecordedEmission = {
   room: string;
@@ -84,6 +89,19 @@ function createPlaybackUpdatePayload(clientSequence: number) {
   };
 }
 
+function createTestSessionRecord(
+  socketId: string,
+  roomCode: string,
+  memberId: string,
+): SessionRecord {
+  return {
+    socketId,
+    roomCode,
+    memberId,
+    allowPlaybackUpdate: createPlaybackUpdateTokenConsumer(),
+  };
+}
+
 function createPlaybackUpdateTestContext(socketId = 'socket-1') {
   const io = new FakeIo();
   const socket = new FakeSocket(socketId);
@@ -103,11 +121,10 @@ function createPlaybackUpdateTestContext(socketId = 'socket-1') {
 
   upsertRoomMember(room, 'member-a', 'Member A');
   state.roomStore.set(room);
-  state.sessionsBySocket.set(socketId, {
+  state.sessionsBySocket.set(
     socketId,
-    roomCode: room.roomCode,
-    memberId: 'member-a',
-  });
+    createTestSessionRecord(socketId, room.roomCode, 'member-a'),
+  );
   state.activeSocketByMember.set(`${room.roomCode}:member-a`, socketId);
 
   createConnectionHandler(io as never, state)(socket as never);
@@ -158,7 +175,7 @@ describe('socket handlers', () => {
     expect(socket.emitted).toHaveLength(0);
   });
 
-  it('rejects playback updates after the socket exhausts its token bucket', () => {
+  it('rejects playback updates after the socket exhausts its rate limit', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-23T12:00:00.000Z'));
 
@@ -247,7 +264,7 @@ describe('socket handlers', () => {
       error: 'Playback update rate limit exceeded.',
     });
 
-    vi.setSystemTime(new Date('2026-04-23T12:00:00.100Z'));
+    vi.advanceTimersByTime(100);
 
     let acceptedResponse: OperationResult<unknown> | null = null;
     playbackUpdateHandler(createPlaybackUpdatePayload(22), (value) => {
@@ -267,14 +284,9 @@ describe('socket handlers', () => {
 
     playbackUpdateHandler(createPlaybackUpdatePayload(1), () => undefined);
 
-    expect(state.playbackUpdateRateLimiter.consume('socket-1')).toBe(true);
-
     disconnectHandler();
 
-    for (let index = 0; index < 20; index += 1) {
-      expect(state.playbackUpdateRateLimiter.consume('socket-1')).toBe(true);
-    }
-    expect(state.playbackUpdateRateLimiter.consume('socket-1')).toBe(false);
+    expect(state.sessionsBySocket.has('socket-1')).toBe(false);
     expect(state.roomStore.size()).toBe(0);
   });
 
@@ -440,13 +452,11 @@ describe('socket handlers', () => {
     });
 
     state.roomStore.set(room);
-    state.sessionsBySocket.set('socket-old', {
-      socketId: 'socket-old',
-      roomCode: 'ROOM01',
-      memberId: 'member-a',
-    });
+    state.sessionsBySocket.set(
+      'socket-old',
+      createTestSessionRecord('socket-old', 'ROOM01', 'member-a'),
+    );
     state.activeSocketByMember.set('ROOM01:member-a', 'socket-old');
-    state.playbackUpdateRateLimiter.consume('socket-old');
     createConnectionHandler(io as never, state)(socket as never);
 
     const roomCreateHandler = socket.handlers.get('room:create') as (
@@ -489,11 +499,6 @@ describe('socket handlers', () => {
     expect(io.leftRooms).toEqual(['ROOM01']);
     expect(state.sessionsBySocket.has('socket-old')).toBe(false);
     expect(state.activeSocketByMember.has('ROOM01:member-a')).toBe(false);
-
-    for (let index = 0; index < 20; index += 1) {
-      expect(state.playbackUpdateRateLimiter.consume('socket-old')).toBe(true);
-    }
-    expect(state.playbackUpdateRateLimiter.consume('socket-old')).toBe(false);
   });
 
   it('cleans up room indexes when the lru ttl expires a room', () => {
@@ -520,13 +525,11 @@ describe('socket handlers', () => {
     });
 
     state.roomStore.set(room);
-    state.sessionsBySocket.set('socket-old', {
-      socketId: 'socket-old',
-      roomCode: 'ROOM01',
-      memberId: 'member-a',
-    });
+    state.sessionsBySocket.set(
+      'socket-old',
+      createTestSessionRecord('socket-old', 'ROOM01', 'member-a'),
+    );
     state.activeSocketByMember.set('ROOM01:member-a', 'socket-old');
-    state.playbackUpdateRateLimiter.consume('socket-old');
 
     vi.advanceTimersByTime(1_001);
 
@@ -534,11 +537,6 @@ describe('socket handlers', () => {
     expect(io.leftRooms).toEqual(['ROOM01']);
     expect(state.sessionsBySocket.has('socket-old')).toBe(false);
     expect(state.activeSocketByMember.has('ROOM01:member-a')).toBe(false);
-
-    for (let index = 0; index < 20; index += 1) {
-      expect(state.playbackUpdateRateLimiter.consume('socket-old')).toBe(true);
-    }
-    expect(state.playbackUpdateRateLimiter.consume('socket-old')).toBe(false);
   });
 
   it('refreshes room recency on joins', () => {
@@ -669,11 +667,10 @@ describe('socket handlers', () => {
 
     upsertRoomMember(room, 'member-a', 'Member A');
     state.roomStore.set(room);
-    state.sessionsBySocket.set(priorSocket.id, {
-      socketId: priorSocket.id,
-      roomCode: room.roomCode,
-      memberId: 'member-a',
-    });
+    state.sessionsBySocket.set(
+      priorSocket.id,
+      createTestSessionRecord(priorSocket.id, room.roomCode, 'member-a'),
+    );
     state.activeSocketByMember.set(`${room.roomCode}:member-a`, priorSocket.id);
     io.sockets.sockets.set(priorSocket.id, priorSocket as never);
 
@@ -741,11 +738,10 @@ describe('socket handlers', () => {
     upsertRoomMember(secondRoom, 'member-b', 'Member B');
     state.roomStore.set(firstRoom);
     state.roomStore.set(secondRoom);
-    state.sessionsBySocket.set(socket.id, {
-      socketId: socket.id,
-      roomCode: firstRoom.roomCode,
-      memberId: 'member-a',
-    });
+    state.sessionsBySocket.set(
+      socket.id,
+      createTestSessionRecord(socket.id, firstRoom.roomCode, 'member-a'),
+    );
     state.activeSocketByMember.set(`${firstRoom.roomCode}:member-a`, socket.id);
 
     createConnectionHandler(io as never, state)(socket as never);
@@ -829,11 +825,10 @@ describe('socket handlers', () => {
     upsertRoomMember(room, 'member-a', 'Member A');
     state.roomStore.set(room);
     state.roomStore.set(otherRoom);
-    state.sessionsBySocket.set(socket.id, {
-      socketId: socket.id,
-      roomCode: room.roomCode,
-      memberId: 'member-a',
-    });
+    state.sessionsBySocket.set(
+      socket.id,
+      createTestSessionRecord(socket.id, room.roomCode, 'member-a'),
+    );
     state.activeSocketByMember.set(`${room.roomCode}:member-a`, socket.id);
     createConnectionHandler(io as never, state)(socket as never);
 

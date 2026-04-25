@@ -23,10 +23,7 @@ import {
   upsertRoomMember,
 } from '@open-watch-party/shared';
 
-import {
-  createTokenBucketRateLimiter,
-  type TokenBucketRateLimiter,
-} from './token-bucket-rate-limiter';
+import { createPlaybackUpdateTokenConsumer } from './playback-update-rate-limiter';
 import { createInMemoryRoomStore, type RoomStore, type RoomStoreRemovalReason } from './room-store';
 
 type ConnectionSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -36,21 +33,19 @@ export type SessionRecord = {
   socketId: string;
   roomCode: string;
   memberId: string;
+  allowPlaybackUpdate: () => boolean;
 };
 
 export type RealtimeState = {
   roomStore: RoomStore;
   sessionsBySocket: Map<string, SessionRecord>;
   activeSocketByMember: Map<string, string>;
-  playbackUpdateRateLimiter: TokenBucketRateLimiter;
   removeRoom: (roomCode: string) => void;
 };
 
 const INVALID_PAYLOAD_ERROR = 'Invalid request payload.';
 const SOCKET_SESSION_REQUIRED_ERROR = 'Socket session not found.';
 const PLAYBACK_UPDATE_RATE_LIMIT_ERROR = 'Playback update rate limit exceeded.';
-const PLAYBACK_UPDATE_TOKENS_PER_SECOND = 10;
-const PLAYBACK_UPDATE_BURST_CAPACITY = 20;
 export const DEFAULT_MAX_ROOMS = 1_000;
 
 export type RealtimeStateOptions = {
@@ -62,21 +57,12 @@ export type RealtimeStateOptions = {
 export function createRealtimeState(options: RealtimeStateOptions = {}): RealtimeState {
   const sessionsBySocket = new Map<string, SessionRecord>();
   const activeSocketByMember = new Map<string, string>();
-  const playbackUpdateRateLimiter = createTokenBucketRateLimiter({
-    capacity: PLAYBACK_UPDATE_BURST_CAPACITY,
-    refillRatePerSecond: PLAYBACK_UPDATE_TOKENS_PER_SECOND,
-  });
-  const roomIndexes = {
-    sessionsBySocket,
-    activeSocketByMember,
-    playbackUpdateRateLimiter,
-  };
 
   const roomStore = createInMemoryRoomStore({
     maxRooms: options.maxRooms ?? DEFAULT_MAX_ROOMS,
     roomIdleTtlMs: options.roomIdleTtlMs ?? 6 * 60 * 60 * 1_000,
     onRoomRemoved: (room, reason) => {
-      cleanupRemovedRoom(roomIndexes, room.roomCode);
+      cleanupRemovedRoom(sessionsBySocket, activeSocketByMember, room.roomCode);
       options.onRoomRemoved?.(room, reason);
     },
   });
@@ -85,7 +71,6 @@ export function createRealtimeState(options: RealtimeStateOptions = {}): Realtim
     roomStore,
     sessionsBySocket,
     activeSocketByMember,
-    playbackUpdateRateLimiter,
     removeRoom: (roomCodeValue: string): void => {
       const roomCode = normalizeRoomCode(roomCodeValue);
       roomStore.delete(roomCode);
@@ -141,7 +126,6 @@ export function createConnectionHandler(io: RealtimeServer, state: RealtimeState
 
     socket.on('disconnect', () => {
       const session = state.sessionsBySocket.get(socket.id);
-      state.playbackUpdateRateLimiter.reset(socket.id);
       if (!session) {
         return;
       }
@@ -285,7 +269,7 @@ function handlePlaybackUpdate(
     return;
   }
 
-  if (!state.playbackUpdateRateLimiter.consume(socket.id)) {
+  if (!session.allowPlaybackUpdate()) {
     acknowledge({ ok: false, error: PLAYBACK_UPDATE_RATE_LIMIT_ERROR });
     return;
   }
@@ -342,12 +326,16 @@ function moveSocketSession(
 
   if (priorSocketId && priorSocketId !== socketId) {
     io.sockets.sockets.get(priorSocketId)?.disconnect(true);
-    state.playbackUpdateRateLimiter.reset(priorSocketId);
     state.sessionsBySocket.delete(priorSocketId);
   }
 
   state.activeSocketByMember.set(key, socketId);
-  state.sessionsBySocket.set(socketId, { socketId, roomCode, memberId });
+  state.sessionsBySocket.set(socketId, {
+    socketId,
+    roomCode,
+    memberId,
+    allowPlaybackUpdate: priorSession?.allowPlaybackUpdate ?? createPlaybackUpdateTokenConsumer(),
+  });
   socket.join(roomCode);
 }
 
@@ -390,26 +378,21 @@ function memberKey(roomCode: string, memberId: string): string {
 }
 
 function cleanupRemovedRoom(
-  state: Pick<
-    RealtimeState,
-    'activeSocketByMember' | 'playbackUpdateRateLimiter' | 'sessionsBySocket'
-  >,
+  sessionsBySocket: Map<string, SessionRecord>,
+  activeSocketByMember: Map<string, string>,
   roomCodeValue: string,
 ): void {
   const roomCode = normalizeRoomCode(roomCodeValue);
 
-  for (const [socketId, session] of state.sessionsBySocket.entries()) {
-    if (session.roomCode !== roomCode) {
-      continue;
+  for (const [socketId, session] of sessionsBySocket.entries()) {
+    if (session.roomCode === roomCode) {
+      sessionsBySocket.delete(socketId);
     }
-
-    state.playbackUpdateRateLimiter.reset(socketId);
-    state.sessionsBySocket.delete(socketId);
   }
 
-  for (const key of state.activeSocketByMember.keys()) {
+  for (const key of activeSocketByMember.keys()) {
     if (key.startsWith(`${roomCode}:`)) {
-      state.activeSocketByMember.delete(key);
+      activeSocketByMember.delete(key);
     }
   }
 }
