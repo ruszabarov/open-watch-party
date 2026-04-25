@@ -1,12 +1,12 @@
 import { storage } from 'wxt/utils/storage';
 
-import type { InternalState, SessionInfo, StoredSettings } from './state';
+import type { BackgroundState, SessionInfo, StoredSettings } from './state';
 import { normalizeMemberName, normalizeServerUrl } from './state';
 
 const settingsItem = storage.defineItem<StoredSettings>('local:watch-party-settings');
 
 export class SettingsStore {
-  constructor(private readonly state: InternalState) {}
+  constructor(private readonly state: BackgroundState) {}
 
   async hydrate(): Promise<void> {
     const stored = await settingsItem.getValue();
@@ -19,7 +19,6 @@ export class SettingsStore {
     this.state.settings.memberName = normalizeMemberName(stored.memberName);
     this.state.settings.serverUrl = normalizeServerUrl(stored.serverUrl);
     this.state.session = stored.session;
-    this.state.roomMemberId = this.state.session?.memberId ?? null;
   }
 
   async updateSettings(next: { serverUrl: string; memberName: string }): Promise<void> {
@@ -32,7 +31,6 @@ export class SettingsStore {
 
   async persistSession(session: SessionInfo | null): Promise<void> {
     this.state.session = session;
-    this.state.roomMemberId = session?.memberId ?? null;
     await this.persist();
   }
 

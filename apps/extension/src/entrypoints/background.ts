@@ -6,11 +6,11 @@ import { createPopupBackgroundService } from '../utils/background/create-popup-b
 import { PartySessionService } from '../utils/background/party-session-service';
 import { POPUP_BACKGROUND_SERVICE_KEY } from '../utils/background/popup-background-service';
 import { SettingsStore } from '../utils/background/settings-store';
-import { createInternalState } from '../utils/background/state';
+import { createBackgroundState } from '../utils/background/state';
 import { TabSyncService } from '../utils/background/tab-sync-service';
 
 export default defineBackground(() => {
-  const state = createInternalState();
+  const state = createBackgroundState();
   let partySessionService!: PartySessionService;
 
   const settingsStore = new SettingsStore(state);

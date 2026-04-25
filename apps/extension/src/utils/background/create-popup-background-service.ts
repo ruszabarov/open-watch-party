@@ -3,11 +3,11 @@ import { emitStateChanged } from './notifier';
 import type { PopupBackgroundService } from './popup-background-service';
 import type { PartySessionService } from './party-session-service';
 import type { SettingsStore } from './settings-store';
-import type { InternalState } from './state';
-import { buildPopupState } from './state';
+import type { BackgroundState } from './state';
+import { selectPopupView } from './state';
 
 export function createPopupBackgroundService(
-  state: InternalState,
+  state: BackgroundState,
   settingsStore: SettingsStore,
   partySessionService: PartySessionService,
 ): PopupBackgroundService {
@@ -21,7 +21,7 @@ export function createPopupBackgroundService(
   }
 
   return {
-    getState: async () => buildPopupState(state),
+    getState: async () => selectPopupView(state),
 
     updateSettings: ({ serverUrl, memberName }) =>
       runMutation(async () => {

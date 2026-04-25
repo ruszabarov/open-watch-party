@@ -5,7 +5,7 @@ import type { ApplySnapshotResult, ServiceContentContext } from '../protocol/ext
 import { sendMessage } from '../protocol/messaging';
 import { getPlugin, findPluginByUrl } from '../services/registry';
 import { emitStateChanged } from './notifier';
-import type { InternalState } from './state';
+import type { BackgroundState } from './state';
 import { createEmptyActiveTabSummary } from './state';
 
 type BrowserTab = Parameters<Parameters<typeof browser.tabs.onUpdated.addListener>[0]>[2];
@@ -27,7 +27,7 @@ interface ControllableWatchTab {
 }
 
 interface TabSyncDependencies {
-  readonly state: InternalState;
+  readonly state: BackgroundState;
   readonly getRoom: () => PartySnapshot | null;
   readonly onControlledPlaybackUpdate: (
     update: PlaybackUpdateDraft,

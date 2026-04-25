@@ -1,6 +1,12 @@
+import type { ConnectionStatus, PartySnapshot } from '@open-watch-party/shared';
 import { sanitizeMemberName, type ServiceId } from '@open-watch-party/shared';
 
-import { DEFAULT_SERVER_URL, type ActiveTabSummary, type PopupState } from '../protocol/extension';
+import {
+  DEFAULT_SERVER_URL,
+  type ActiveTabSummary,
+  type PopupState,
+  type ServiceContentContext,
+} from '../protocol/extension';
 
 export type SessionInfo = {
   roomCode: string;
@@ -15,11 +21,22 @@ export type StoredSettings = {
   session: SessionInfo | null;
 };
 
-export type InternalState = PopupState & {
+export type BackgroundState = {
+  settings: {
+    serverUrl: string;
+    memberName: string;
+  };
+  connectionStatus: ConnectionStatus;
+  room: PartySnapshot | null;
+  activeTab: ActiveTabSummary;
+  controlledTabId: number | null;
+  contentContext: ServiceContentContext | null;
+  lastError: string | null;
+  lastWarning: string | null;
   session: SessionInfo | null;
 };
 
-export function createInternalState(): InternalState {
+export function createBackgroundState(): BackgroundState {
   return {
     settings: {
       serverUrl: DEFAULT_SERVER_URL,
@@ -27,7 +44,6 @@ export function createInternalState(): InternalState {
     },
     connectionStatus: 'disconnected',
     room: null,
-    roomMemberId: null,
     activeTab: createEmptyActiveTabSummary(),
     controlledTabId: null,
     contentContext: null,
@@ -37,12 +53,12 @@ export function createInternalState(): InternalState {
   };
 }
 
-export function buildPopupState(state: InternalState): PopupState {
+export function selectPopupView(state: BackgroundState): PopupState {
   return {
     settings: { ...state.settings },
     connectionStatus: state.connectionStatus,
     room: state.room,
-    roomMemberId: state.roomMemberId,
+    roomMemberId: state.session?.memberId ?? null,
     activeTab: state.activeTab,
     controlledTabId: state.controlledTabId,
     contentContext: state.contentContext,

@@ -20,7 +20,7 @@ import type {
 import { getErrorMessage } from '../errors';
 import { emitStateChanged } from './notifier';
 import { createRealtimeConnection, type RealtimeConnection } from './realtime-connection';
-import type { InternalState } from './state';
+import type { BackgroundState } from './state';
 import { normalizeServerUrl } from './state';
 import type { SettingsStore } from './settings-store';
 import type { TabSyncService } from './tab-sync-service';
@@ -29,7 +29,7 @@ export class PartySessionService {
   private connection: RealtimeConnection | null = null;
 
   constructor(
-    private readonly state: InternalState,
+    private readonly state: BackgroundState,
     private readonly settingsStore: SettingsStore,
     private readonly tabSync: TabSyncService,
   ) {}
@@ -51,7 +51,6 @@ export class PartySessionService {
       await this.applyRoomResponse(response);
     } catch (error) {
       this.state.room = null;
-      this.state.roomMemberId = null;
       this.state.session = null;
       this.state.lastError = getErrorMessage(error);
       this.state.connectionStatus = 'error';
@@ -110,7 +109,6 @@ export class PartySessionService {
     }
 
     this.state.room = null;
-    this.state.roomMemberId = null;
     this.state.session = null;
     this.closeConnection();
     this.state.connectionStatus = 'disconnected';
@@ -223,7 +221,6 @@ export class PartySessionService {
   private async applyRoomResponse(response: RoomResponse): Promise<void> {
     const currentSession = this.state.session;
     this.state.room = response.snapshot;
-    this.state.roomMemberId = response.memberId;
     this.state.session = {
       roomCode: response.snapshot.roomCode,
       memberId: response.memberId,
@@ -299,7 +296,7 @@ export class PartySessionService {
   }
 
   private async incrementPlaybackClientSequence(
-    session: NonNullable<InternalState['session']>,
+    session: NonNullable<BackgroundState['session']>,
   ): Promise<number> {
     const nextClientSequence = session.playbackClientSequence + 1;
     await this.settingsStore.persistSession({
