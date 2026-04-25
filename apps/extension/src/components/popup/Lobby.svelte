@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { PopupState } from "../../utils/protocol/extension";
+  import type { BackgroundState } from "../../utils/background/state";
   import {
     SUPPORTED_SERVICE_DESCRIPTORS,
     getServiceDescriptor,
@@ -7,7 +7,7 @@
   import ServiceBadge from "./ServiceBadge.svelte";
 
   interface Props {
-    popup: PopupState;
+    popup: BackgroundState;
     isBusy: boolean;
     onCreateRoom: () => void;
     onJoinRoom: (code: string) => void;

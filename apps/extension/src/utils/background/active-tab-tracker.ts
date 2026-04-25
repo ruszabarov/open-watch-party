@@ -1,12 +1,8 @@
 import { browser } from 'wxt/browser';
-import { createLogger } from '../logger';
 import { findPluginByUrl } from '../services/registry';
-import { syncPopupState } from './popup-state-item';
-import type { BackgroundState } from './state';
-import { createEmptyActiveTabSummary } from './state';
+import { createEmptyActiveTabSummary, syncBackgroundState, type BackgroundState } from './state';
 
 type BrowserTab = Parameters<Parameters<typeof browser.tabs.onUpdated.addListener>[0]>[2];
-const log = createLogger('background:active-tab');
 
 export class ActiveTabTracker {
   constructor(private readonly state: BackgroundState) {}
@@ -24,35 +20,34 @@ export class ActiveTabTracker {
   }
 
   async refreshActiveTab(notify = true): Promise<void> {
-    log.trace({ notify }, 'active_tab:refresh_started');
     const [activeTab] = await browser.tabs.query({
       active: true,
       currentWindow: true,
     });
 
     if (!activeTab?.id) {
-      log.trace('active_tab:missing');
       this.state.activeTab = createEmptyActiveTabSummary();
       if (notify) {
-        syncPopupState(this.state);
+        syncBackgroundState(this.state);
       }
       return;
     }
 
     this.state.activeTab = summarizeTab(activeTab);
-    log.trace(
-      {
-        tabId: this.state.activeTab.tabId,
-        activeServiceId: this.state.activeTab.activeServiceId,
-        isWatchPage: this.state.activeTab.isWatchPage,
-        url: this.state.activeTab.url,
-      },
-      'active_tab:summarized',
-    );
 
     if (notify) {
-      syncPopupState(this.state);
+      syncBackgroundState(this.state);
     }
+  }
+
+  async requireActiveTabId(): Promise<number> {
+    await this.refreshActiveTab(false);
+    const tabId = this.state.activeTab.tabId;
+    if (tabId == null) {
+      throw new Error('Open a browser tab before joining a room.');
+    }
+
+    return tabId;
   }
 }
 

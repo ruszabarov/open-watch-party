@@ -1,58 +1,42 @@
 import { defineBackground } from 'wxt/utils/define-background';
 
 import { getErrorMessage } from '../utils/errors';
-import { createLogger, getLogError } from '../utils/logger';
 import { onMessage } from '../utils/protocol/messaging';
-import { syncPopupState } from '../utils/background/popup-state-item';
+import { createBackgroundBus } from '../utils/background/bus';
 import { PartySessionService } from '../utils/background/party-session-service';
 import { SettingsStore } from '../utils/background/settings-store';
 import {
   createBackgroundState,
-  selectConnectionStatus,
-  selectRoom,
-  selectSession,
+  syncBackgroundState,
   type BackgroundState,
 } from '../utils/background/state';
 import { ActiveTabTracker } from '../utils/background/active-tab-tracker';
 import { ControlledTabService } from '../utils/background/controlled-tab-service';
 
-const log = createLogger('background');
-
 export default defineBackground(() => {
-  log.info('background:started');
   const state = createBackgroundState();
-  let partySessionService!: PartySessionService;
-
+  const bus = createBackgroundBus();
   const settingsStore = new SettingsStore(state);
   const activeTabTracker = new ActiveTabTracker(state);
-  const controlledTabService = new ControlledTabService(
-    {
-      state,
-      getRoom: () => selectRoom(state),
-      onControlledPlaybackUpdate: async (update) => {
-        await partySessionService.sendPlaybackUpdate(update, true);
-      },
-    },
+  const controlledTabService = new ControlledTabService(state, bus, activeTabTracker);
+  const partySessionService = new PartySessionService(
+    state,
+    bus,
+    settingsStore,
     activeTabTracker,
+    controlledTabService,
   );
-  partySessionService = new PartySessionService(state, settingsStore, controlledTabService);
 
   registerContentHandlers(controlledTabService);
   registerPopupHandlers(state, settingsStore, partySessionService);
   activeTabTracker.registerEventHandlers();
   controlledTabService.registerEventHandlers();
+  partySessionService.registerEventHandlers();
 
   void (async () => {
     await settingsStore.hydrate();
     await activeTabTracker.refreshActiveTab();
     await partySessionService.connectForStoredSession();
-    log.trace(
-      {
-        hasSession: selectSession(state) !== null,
-        connectionStatus: selectConnectionStatus(state),
-      },
-      'background:hydrated',
-    );
   })();
 });
 
@@ -60,9 +44,8 @@ async function runMutation(state: BackgroundState, handler: () => Promise<void>)
   try {
     await handler();
   } catch (error) {
-    log.warn({ error: getLogError(error) }, 'background:mutation_failed');
     state.lastError = getErrorMessage(error);
-    syncPopupState(state);
+    syncBackgroundState(state);
   }
 }
 
@@ -82,7 +65,7 @@ function registerPopupHandlers(
   onMessage('popup:update-settings', ({ data }) =>
     runMutation(state, async () => {
       await settingsStore.updateSettings(data);
-      syncPopupState(state);
+      syncBackgroundState(state);
     }),
   );
 }
@@ -94,9 +77,9 @@ function registerContentHandlers(controlledTabService: ControlledTabService): vo
     }
   });
 
-  onMessage('content:playback-update', async ({ data, sender }) => {
+  onMessage('content:playback-update', ({ data, sender }) => {
     if (sender.tab?.id != null) {
-      await controlledTabService.relayControlledPlaybackUpdate(sender.tab.id, data);
+      controlledTabService.relayControlledPlaybackUpdate(sender.tab.id, data);
     }
   });
 

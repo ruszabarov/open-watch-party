@@ -1,15 +1,16 @@
 <script lang="ts">
-  import type { PopupState } from '../../utils/protocol/extension';
+  import { selectRoom, selectSession, type BackgroundState } from '../../utils/background/state';
 
   interface Props {
-    popup: PopupState;
+    popup: BackgroundState;
     isBusy: boolean;
     onLeave: () => void;
   }
 
   const { popup, isBusy, onLeave }: Props = $props();
 
-  const room = $derived(popup.room!);
+  const room = $derived(selectRoom(popup)!);
+  const roomMemberId = $derived(selectSession(popup)?.memberId ?? null);
 
   let copied = $state(false);
   let copyTimer: ReturnType<typeof setTimeout> | null = null;
@@ -70,7 +71,7 @@
       </p>
       <ul class="m-0 flex list-none flex-wrap gap-2 p-0">
         {#each room.members as member (member.id)}
-          {@const isMe = member.id === popup.roomMemberId}
+          {@const isMe = member.id === roomMemberId}
           <li
             class={[
               'inline-flex max-w-full items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-sm',

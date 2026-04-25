@@ -13,11 +13,8 @@ import type {
   ServerToClientEvents,
 } from '@open-watch-party/shared';
 
-import { createLogger, elapsedMs, getLogError } from '../logger';
-
 const ACK_TIMEOUT_MS = 5_000;
 const CONNECT_TIMEOUT_MS = 5_000;
-const log = createLogger('background:realtime');
 
 type RequestArgs =
   | [event: 'room:create', payload: CreateRoomRequest]
@@ -48,13 +45,11 @@ export class RealtimeConnection {
       reconnection: true,
       transports: ['websocket'],
     });
-    log.info({ serverUrl }, 'realtime:connect_started');
 
     this.socket.on('connect', () => {
       const isReconnect = this.hasConnectedBefore;
       this.hasConnectedBefore = true;
       this.setStatus('connected');
-      log.info({ serverUrl, socketId: this.socket.id, isReconnect }, 'realtime:connected');
 
       if (isReconnect) {
         for (const handler of this.reconnectHandlers) {
@@ -64,15 +59,10 @@ export class RealtimeConnection {
     });
 
     this.socket.on('disconnect', () => {
-      log.info(
-        { serverUrl, socketId: this.socket.id, manuallyDisconnected: this.manuallyDisconnected },
-        'realtime:disconnected',
-      );
       this.setStatus(this.manuallyDisconnected ? 'disconnected' : 'reconnecting');
     });
 
     this.socket.on('connect_error', (error) => {
-      log.warn({ serverUrl, error: getLogError(error) }, 'realtime:connect_error');
       this.setStatus('error', error.message);
     });
   }
@@ -95,35 +85,15 @@ export class RealtimeConnection {
   ): Promise<OperationResult<PartySnapshot>>;
   async request(...args: RequestArgs): Promise<RequestResult> {
     await this.waitForConnect();
-    const startedAt = performance.now();
-    const [event] = args;
-
-    try {
-      const response = await this.dispatchRequest(args);
-      log.debug({ event, ok: response.ok, durationMs: elapsedMs(startedAt) }, 'realtime:ack');
-      return response;
-    } catch (error) {
-      log.warn(
-        { event, durationMs: elapsedMs(startedAt), error: getLogError(error) },
-        'realtime:ack_failed',
-      );
-      throw error;
-    }
+    return this.dispatchRequest(args);
   }
 
   on(event: 'room:state', handler: ServerToClientEvents['room:state']): () => void;
   on(event: 'playback:state', handler: ServerToClientEvents['playback:state']): () => void;
   on(event: keyof ServerToClientEvents, handler: (snapshot: PartySnapshot) => void): () => void {
-    const loggedHandler = (snapshot: PartySnapshot) => {
-      log.debug(
-        { event, roomCode: snapshot.roomCode, sequence: snapshot.sequence },
-        'realtime:event_received',
-      );
-      handler(snapshot);
-    };
-    this.socket.on(event, loggedHandler);
+    this.socket.on(event, handler);
     return () => {
-      this.socket.off(event, loggedHandler);
+      this.socket.off(event, handler);
     };
   }
 
@@ -144,7 +114,6 @@ export class RealtimeConnection {
 
   disconnect(): void {
     this.manuallyDisconnected = true;
-    log.info({ serverUrl: this.serverUrl }, 'realtime:disconnect_requested');
     this.socket.disconnect();
   }
 
@@ -179,20 +148,14 @@ export class RealtimeConnection {
       };
       const handleConnect = () => {
         cleanup();
-        log.trace({ serverUrl: this.serverUrl }, 'realtime:wait_for_connect_ok');
         resolve();
       };
       const handleConnectError = (error: Error) => {
         cleanup();
-        log.warn(
-          { serverUrl: this.serverUrl, error: getLogError(error) },
-          'realtime:wait_for_connect_failed',
-        );
         reject(error);
       };
       const timeoutId = setTimeout(() => {
         cleanup();
-        log.warn({ serverUrl: this.serverUrl }, 'realtime:wait_for_connect_timeout');
         reject(new Error('Timed out connecting to the realtime server.'));
       }, CONNECT_TIMEOUT_MS);
 

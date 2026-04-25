@@ -9,7 +9,6 @@ import {
 
 import type { PartySnapshot, PlaybackUpdateDraft } from '@open-watch-party/shared';
 
-import { createLogger, elapsedMs, getLogError } from '../logger';
 import type { ApplySnapshotResult, ServiceContentContext } from './extension';
 
 export interface ExtensionProtocolMap {
@@ -27,7 +26,6 @@ export interface ExtensionProtocolMap {
 
 export const extensionMessaging = defineExtensionMessaging<ExtensionProtocolMap>();
 const { onMessage: rawOnMessage, sendMessage: rawSendMessage } = extensionMessaging;
-const log = createLogger('extension:messaging');
 export const sendMessage = rawSendMessage;
 
 type ExtensionMessageFor<TType extends keyof ExtensionProtocolMap> = Message<
@@ -42,34 +40,5 @@ export function onMessage<TType extends keyof ExtensionProtocolMap>(
     message: ExtensionMessageFor<TType>,
   ) => MaybePromise<GetReturnType<ExtensionProtocolMap[TType]>>,
 ): RemoveListenerCallback {
-  const messageType = String(type);
-
-  return rawOnMessage(type, async (message) => {
-    const startedAt = performance.now();
-
-    try {
-      const response = await handler(message);
-      log.trace(
-        {
-          messageType,
-          tabId: message.sender.tab?.id,
-          durationMs: elapsedMs(startedAt),
-          emptyResponse: response == null,
-        },
-        'message:handled',
-      );
-      return response;
-    } catch (error) {
-      log.warn(
-        {
-          messageType,
-          tabId: message.sender.tab?.id,
-          durationMs: elapsedMs(startedAt),
-          error: getLogError(error),
-        },
-        'message:handler_failed',
-      );
-      throw error;
-    }
-  });
+  return rawOnMessage(type, handler);
 }

@@ -1,7 +1,6 @@
 import type { PlaybackUpdateDraft } from '@open-watch-party/shared';
 import { defineContentScript } from 'wxt/utils/define-content-script';
 
-import { createLogger } from '../logger';
 import type { ServiceContentContext } from '../protocol/extension';
 import { onMessage, sendMessage } from '../protocol/messaging';
 import type { ServicePlugin } from './types';
@@ -114,7 +113,6 @@ export function runServiceContentScript(plugin: ServicePlugin) {
   return defineContentScript({
     matches: [...plugin.contentMatches],
     main() {
-      const log = createLogger(`content:${plugin.id}`);
       const readPlaybackState = (): DomPlaybackState => buildPlaybackState(plugin);
       const getContextFromState = (state: DomPlaybackState): ServiceContentContext =>
         buildContextFromState(state, plugin);
@@ -134,40 +132,16 @@ export function runServiceContentScript(plugin: ServicePlugin) {
           context.playbackReady && context.mediaId ? `${context.href}::${context.mediaId}` : null;
 
         if (readyMediaKey && lastReadyMediaKey && readyMediaKey !== lastReadyMediaKey) {
-          log.trace(
-            {
-              previousMediaKey: lastReadyMediaKey,
-              nextMediaKey: readyMediaKey,
-            },
-            'content:request_sync_for_media_change',
-          );
           void sendMessage('content:request-sync').catch(() => undefined);
         }
 
         lastReadyMediaKey = readyMediaKey;
-        log.trace(
-          {
-            href: context.href,
-            mediaId: context.mediaId,
-            playbackReady: context.playbackReady,
-            issue: context.issue,
-          },
-          'content:context',
-        );
         void sendMessage('content:context', context).catch(() => undefined);
       };
 
       const emitPlaybackUpdate = (state: DomPlaybackState) => {
         const update = buildPlaybackUpdate(state, plugin);
         if (!update) {
-          log.trace(
-            {
-              hasVideo: Boolean(state.video),
-              mediaId: state.mediaId,
-              isWatchPage: state.isWatchPage,
-            },
-            'content:playback_update_skipped',
-          );
           return;
         }
 
@@ -178,38 +152,15 @@ export function runServiceContentScript(plugin: ServicePlugin) {
             Math.abs(pendingAppliedPlaybackState.positionSec - update.positionSec) <=
               SEEK_CORRECTION_THRESHOLD_SEC
           ) {
-            log.trace(
-              {
-                mediaId: update.mediaId,
-                playing: update.playing,
-                positionSec: update.positionSec,
-              },
-              'content:playback_update_skipped_after_apply',
-            );
             pendingAppliedPlaybackState = null;
             return;
           }
 
           if (update.mediaId !== pendingAppliedPlaybackState.mediaId) {
-            log.trace(
-              {
-                previousMediaId: pendingAppliedPlaybackState.mediaId,
-                nextMediaId: update.mediaId,
-              },
-              'content:pending_applied_state_cleared',
-            );
             pendingAppliedPlaybackState = null;
           }
         }
 
-        log.debug(
-          {
-            mediaId: update.mediaId,
-            playing: update.playing,
-            positionSec: update.positionSec,
-          },
-          'content:playback_update',
-        );
         void sendMessage('content:playback-update', update).catch(() => undefined);
       };
 
@@ -288,40 +239,21 @@ export function runServiceContentScript(plugin: ServicePlugin) {
       const stopObservingUrl = observeUrlChanges(scheduleRefresh);
 
       refresh();
-      log.trace({ href: window.location.href }, 'content:initial_sync_requested');
       void sendMessage('content:request-sync').catch(() => undefined);
 
       const removeContextListener = onMessage('party:request-context', () => {
-        log.trace({ href: window.location.href }, 'content:context_requested');
         return readContext();
       });
 
       const removePlaybackListener = onMessage('party:request-playback', () => {
-        log.trace({ href: window.location.href }, 'content:playback_requested');
         return readPlaybackUpdate();
       });
 
       const removeSnapshotListener = onMessage('party:apply-snapshot', async ({ data }) => {
         const state = readPlaybackState();
         const context = getContextFromState(state);
-        log.debug(
-          {
-            mediaId: data.snapshot.playback.mediaId,
-            playing: data.snapshot.playback.playing,
-            positionSec: data.snapshot.playback.positionSec,
-            playbackReady: context.playbackReady,
-          },
-          'content:snapshot_apply_requested',
-        );
 
         if (!state.video || !context.playbackReady) {
-          log.trace(
-            {
-              mediaId: context.mediaId,
-              issue: context.issue,
-            },
-            'content:snapshot_apply_skipped',
-          );
           return {
             applied: false,
             reason: plugin.issues.playerNotReady,
@@ -355,13 +287,6 @@ export function runServiceContentScript(plugin: ServicePlugin) {
           if (pendingAppliedPlaybackState === nextAppliedPlaybackState) {
             pendingAppliedPlaybackState = null;
           }
-          log.warn(
-            {
-              mediaId: data.snapshot.playback.mediaId,
-              reason: playbackResult.reason,
-            },
-            'content:snapshot_apply_failed',
-          );
           return {
             applied: false,
             reason: playbackResult.reason,
@@ -370,14 +295,6 @@ export function runServiceContentScript(plugin: ServicePlugin) {
         }
 
         const appliedContext = readContext();
-        log.debug(
-          {
-            mediaId: data.snapshot.playback.mediaId,
-            playing: data.snapshot.playback.playing,
-            positionSec: data.snapshot.playback.positionSec,
-          },
-          'content:snapshot_applied',
-        );
         return { applied: true, context: appliedContext };
       });
 

@@ -1,11 +1,13 @@
 <script lang="ts">
   import {
-    createDefaultPopupState,
-    type PopupState,
-  } from '../../utils/protocol/extension';
+    backgroundStateItem,
+    createBackgroundState,
+    selectConnectionStatus,
+    selectRoom,
+    type BackgroundState,
+  } from '../../utils/background/state';
   import { sendMessage } from '../../utils/protocol/messaging';
   import { getErrorMessage } from '../../utils/errors';
-  import { popupStateItem } from '../../utils/background/popup-state-item';
 
   import Header from '../../components/popup/Header.svelte';
   import Lobby from '../../components/popup/Lobby.svelte';
@@ -13,9 +15,12 @@
   import Settings from '../../components/popup/Settings.svelte';
   import Notice from '../../components/popup/Notice.svelte';
 
-  let popup: PopupState = $state(createDefaultPopupState());
+  let popup: BackgroundState = $state(createBackgroundState());
   let isBusy = $state(false);
   let settingsOpen = $state(false);
+
+  const connectionStatus = $derived(selectConnectionStatus(popup));
+  const room = $derived(selectRoom(popup));
 
   function setLastError(error: unknown): void {
     popup = { ...popup, lastError: getErrorMessage(error, 'Unexpected popup error.') };
@@ -44,7 +49,7 @@
     void perform(() => sendMessage('popup:leave-room', undefined));
   }
 
-  function handleSaveSettings(next: PopupState['settings']): void {
+  function handleSaveSettings(next: BackgroundState['settings']): void {
     void perform(() => sendMessage('popup:update-settings', next)).then(closeSettings);
   }
 
@@ -65,9 +70,9 @@
   }
 
   $effect(() => {
-    popupStateItem.getValue().then((v) => { popup = v; });
+    backgroundStateItem.getValue().then((v) => { popup = v; });
 
-    const unwatch = popupStateItem.watch((newValue) => {
+    const unwatch = backgroundStateItem.watch((newValue) => {
       popup = newValue;
     });
 
@@ -77,7 +82,7 @@
 
 <div class="flex flex-col overflow-hidden bg-stone-50 text-stone-900">
   <Header
-    status={popup.connectionStatus}
+    status={connectionStatus}
     settingsOpen={settingsOpen}
     onToggleSettings={toggleSettings}
   />
@@ -93,7 +98,7 @@
       </div>
     {:else}
       <div class="flex flex-col gap-3">
-        {#if popup.room}
+        {#if room}
           <Room
             popup={popup}
             {isBusy}

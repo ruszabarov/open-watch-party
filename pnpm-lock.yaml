@@ -12,6 +12,9 @@ catalogs:
     ts-pattern:
       specifier: ^5.9.0
       version: 5.9.0
+    zod:
+      specifier: ^4.3.6
+      version: 4.3.6
 
 importers:
 
@@ -47,20 +50,17 @@ importers:
       '@webext-core/messaging':
         specifier: ^2.3.0
         version: 2.3.0
-      pino:
-        specifier: 'catalog:'
-        version: 10.3.1
+      mitt:
+        specifier: ^3.0.1
+        version: 3.0.1
       socket.io-client:
         specifier: ^4.8.3
         version: 4.8.3
       tailwindcss:
         specifier: ^4.2.2
         version: 4.2.2
-      ts-pattern:
-        specifier: 'catalog:'
-        version: 5.9.0
       zod:
-        specifier: ^4.3.6
+        specifier: 'catalog:'
         version: 4.3.6
     devDependencies:
       '@tsconfig/svelte':
@@ -106,13 +106,13 @@ importers:
         specifier: 'catalog:'
         version: 5.9.0
       zod:
-        specifier: ^4.3.6
+        specifier: 'catalog:'
         version: 4.3.6
 
   packages/shared:
     dependencies:
       zod:
-        specifier: ^4.3.6
+        specifier: 'catalog:'
         version: 4.3.6
 
 packages:
@@ -1890,6 +1890,9 @@ packages:
 
   minimist@1.2.8:
     resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
+
+  mitt@3.0.1:
+    resolution: {integrity: sha512-vKivATfr97l2/QBCYAkXYDbrIWPM2IIKEl7YPhjCvKlG3kE2gm+uBo6nEXK3M5/Ffh/FLpKExzOQ3JJoJGFKBw==}
 
   mlly@1.8.2:
     resolution: {integrity: sha512-d+ObxMQFmbt10sretNDytwt85VrbkhhUA/JBGm1MPaWJ65Cl4wOgLaB1NYvJSZ0Ef03MMEU/0xpPMXUIQ29UfA==}
@@ -4001,6 +4004,8 @@ snapshots:
       brace-expansion: 1.1.14
 
   minimist@1.2.8: {}
+
+  mitt@3.0.1: {}
 
   mlly@1.8.2:
     dependencies:

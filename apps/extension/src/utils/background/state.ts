@@ -1,13 +1,10 @@
+import { storage } from '#imports';
 import type { ConnectionStatus, PartySnapshot } from '@open-watch-party/shared';
 import { sanitizeMemberName, type ServiceId } from '@open-watch-party/shared';
 import { match, P } from 'ts-pattern';
 
-import {
-  DEFAULT_SERVER_URL,
-  type ActiveTabSummary,
-  type PopupState,
-  type ServiceContentContext,
-} from '../protocol/extension';
+import { DEFAULT_SERVER_URL } from '../config';
+import type { ActiveTabSummary, ServiceContentContext } from '../protocol/extension';
 
 export type SessionInfo = {
   roomCode: string;
@@ -67,16 +64,12 @@ export function createBackgroundState(): BackgroundState {
   };
 }
 
-export function selectPopupView(state: BackgroundState): PopupState {
-  return {
-    settings: { ...state.settings },
-    connectionStatus: selectConnectionStatus(state),
-    room: selectRoom(state),
-    roomMemberId: selectSession(state)?.memberId ?? null,
-    activeTab: state.activeTab,
-    lastError: state.lastError,
-    lastWarning: state.lastWarning,
-  };
+export const backgroundStateItem = storage.defineItem<BackgroundState>('session:background-state', {
+  fallback: createBackgroundState(),
+});
+
+export function syncBackgroundState(state: BackgroundState): void {
+  void backgroundStateItem.setValue(state);
 }
 
 export function clearControlledTab(state: BackgroundState): void {

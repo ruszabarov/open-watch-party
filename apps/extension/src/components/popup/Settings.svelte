@@ -1,15 +1,12 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import {
-    DEFAULT_SERVER_URL,
-    SHOW_SERVER_SETTINGS,
-    type PopupState,
-  } from '../../utils/protocol/extension';
+  import type { BackgroundState } from '../../utils/background/state';
+  import { DEFAULT_SERVER_URL, SHOW_SERVER_SETTINGS } from '../../utils/config';
 
   interface Props {
-    settings: PopupState['settings'];
+    settings: BackgroundState['settings'];
     isBusy: boolean;
-    onSave: (next: PopupState['settings']) => void;
+    onSave: (next: BackgroundState['settings']) => void;
   }
 
   const { settings, isBusy, onSave }: Props = $props();
