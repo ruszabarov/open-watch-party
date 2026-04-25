@@ -37,7 +37,7 @@ export default defineBackground(() => {
   );
   partySessionService = new PartySessionService(state, settingsStore, controlledTabService);
 
-  registerContentHandlers(activeTabTracker, controlledTabService);
+  registerContentHandlers(controlledTabService);
   registerPopupHandlers(state, settingsStore, partySessionService);
   activeTabTracker.registerEventHandlers();
   controlledTabService.registerEventHandlers();
@@ -87,13 +87,9 @@ function registerPopupHandlers(
   );
 }
 
-function registerContentHandlers(
-  activeTabTracker: ActiveTabTracker,
-  controlledTabService: ControlledTabService,
-): void {
+function registerContentHandlers(controlledTabService: ControlledTabService): void {
   onMessage('content:context', ({ data, sender }) => {
     if (sender.tab?.id != null) {
-      activeTabTracker.recordContentContext(sender.tab.id, data);
       controlledTabService.recordContentContext(sender.tab.id, data);
     }
   });

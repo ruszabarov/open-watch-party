@@ -1,7 +1,5 @@
 import { browser } from 'wxt/browser';
-import type { ServiceContentContext } from '../protocol/extension';
-import { createLogger, getLogError } from '../logger';
-import { sendMessage } from '../protocol/messaging';
+import { createLogger } from '../logger';
 import { findPluginByUrl } from '../services/registry';
 import { syncPopupState } from './popup-state-item';
 import type { BackgroundState } from './state';
@@ -35,7 +33,6 @@ export class ActiveTabTracker {
     if (!activeTab?.id) {
       log.trace('active_tab:missing');
       this.state.activeTab = createEmptyActiveTabSummary();
-      this.state.contentContext = null;
       if (notify) {
         syncPopupState(this.state);
       }
@@ -53,42 +50,7 @@ export class ActiveTabTracker {
       'active_tab:summarized',
     );
 
-    if (this.state.activeTab.activeServiceId) {
-      const contentContext = await requestContextFromTab(activeTab.id);
-      if (contentContext) {
-        this.state.contentContext = contentContext;
-        log.trace(
-          {
-            tabId: activeTab.id,
-            mediaId: contentContext.mediaId,
-            playbackReady: contentContext.playbackReady,
-            issue: contentContext.issue,
-          },
-          'active_tab:content_context',
-        );
-      } else {
-        log.trace({ tabId: activeTab.id }, 'active_tab:content_context_empty');
-      }
-    }
-
     if (notify) {
-      syncPopupState(this.state);
-    }
-  }
-
-  recordContentContext(tabId: number, context: ServiceContentContext): void {
-    const isActiveTab = this.state.activeTab.tabId === tabId;
-    if (isActiveTab) {
-      log.trace(
-        {
-          tabId,
-          mediaId: context.mediaId,
-          playbackReady: context.playbackReady,
-          issue: context.issue,
-        },
-        'active_tab:context_recorded',
-      );
-      this.state.contentContext = context;
       syncPopupState(this.state);
     }
   }
@@ -105,14 +67,4 @@ function summarizeTab(tab: BrowserTab) {
     activeServiceId: classification?.plugin.id ?? null,
     isWatchPage: classification?.isWatchPage ?? false,
   };
-}
-
-async function requestContextFromTab(tabId: number): Promise<ServiceContentContext | null> {
-  try {
-    const response = await sendMessage('party:request-context', undefined, { tabId });
-    return response ?? null;
-  } catch (error) {
-    log.trace({ tabId, error: getLogError(error) }, 'active_tab:context_request_failed');
-    return null;
-  }
 }

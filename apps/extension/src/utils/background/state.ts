@@ -47,7 +47,7 @@ export type BackgroundState = {
   sessionState: BackgroundSessionState;
   activeTab: ActiveTabSummary;
   controlledTabId: number | null;
-  contentContext: ServiceContentContext | null;
+  controlledContext: ServiceContentContext | null;
   lastError: string | null;
   lastWarning: string | null;
 };
@@ -61,7 +61,7 @@ export function createBackgroundState(): BackgroundState {
     sessionState: createIdleSessionState(),
     activeTab: createEmptyActiveTabSummary(),
     controlledTabId: null,
-    contentContext: null,
+    controlledContext: null,
     lastError: null,
     lastWarning: null,
   };
@@ -74,11 +74,23 @@ export function selectPopupView(state: BackgroundState): PopupState {
     room: selectRoom(state),
     roomMemberId: selectSession(state)?.memberId ?? null,
     activeTab: state.activeTab,
-    controlledTabId: state.controlledTabId,
-    contentContext: state.contentContext,
     lastError: state.lastError,
     lastWarning: state.lastWarning,
   };
+}
+
+export function clearControlledTab(state: BackgroundState): void {
+  state.controlledTabId = null;
+  state.controlledContext = null;
+}
+
+export function setControlledTab(
+  state: BackgroundState,
+  tabId: number,
+  context: ServiceContentContext | null = null,
+): void {
+  state.controlledTabId = tabId;
+  state.controlledContext = context;
 }
 
 export function createIdleSessionState(): BackgroundSessionState {

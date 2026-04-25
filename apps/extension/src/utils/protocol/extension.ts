@@ -30,8 +30,6 @@ export interface PopupState {
   room: PartySnapshot | null;
   roomMemberId: string | null;
   activeTab: ActiveTabSummary;
-  controlledTabId: number | null;
-  contentContext: ServiceContentContext | null;
   lastError: string | null;
   lastWarning: string | null;
 }
@@ -54,8 +52,6 @@ export function createDefaultPopupState(overrides: Partial<PopupState> = {}): Po
       isWatchPage: false,
       ...overrides.activeTab,
     },
-    controlledTabId: null,
-    contentContext: null,
     lastError: null,
     lastWarning: null,
     ...overrides,

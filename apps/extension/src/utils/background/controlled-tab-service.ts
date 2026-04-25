@@ -5,7 +5,7 @@ import { createLogger, getLogError } from '../logger';
 import { sendMessage } from '../protocol/messaging';
 import { getPlugin } from '../services/registry';
 import { syncPopupState } from './popup-state-item';
-import { selectSession, type BackgroundState } from './state';
+import { clearControlledTab, selectSession, setControlledTab, type BackgroundState } from './state';
 import type { ActiveTabTracker } from './active-tab-tracker';
 
 type ReadyServiceContentContext = ServiceContentContext & {
@@ -21,6 +21,7 @@ function isReadyServiceContentContext(
 }
 
 interface ControllableWatchTab {
+  tabId: number;
   context: ReadyServiceContentContext;
   playback: PlaybackUpdateDraft;
 }
@@ -36,7 +37,6 @@ interface ControlledTabDependencies {
 
 export class ControlledTabService {
   private pendingControlledNavigationUrl: string | null = null;
-  private controlledContext: ServiceContentContext | null = null;
 
   constructor(
     private readonly deps: ControlledTabDependencies,
@@ -70,11 +70,9 @@ export class ControlledTabService {
     browser.tabs.onRemoved.addListener((tabId) => {
       if (this.deps.state.controlledTabId === tabId) {
         log.warn({ tabId }, 'controlled_tab:removed');
-        this.controlledContext = null;
         const session = selectSession(this.deps.state);
         const sessionPlugin = session ? getPlugin(session.serviceId) : null;
-        this.deps.state.controlledTabId = null;
-        this.deps.state.contentContext = null;
+        clearControlledTab(this.deps.state);
         this.deps.state.lastWarning = sessionPlugin
           ? `The controlled ${sessionPlugin.descriptor.label} tab was closed.`
           : 'The controlled tab was closed.';
@@ -95,8 +93,7 @@ export class ControlledTabService {
         },
         'controlled_tab:context_recorded',
       );
-      this.controlledContext = context;
-      this.deps.state.contentContext = context;
+      this.deps.state.controlledContext = context;
       syncPopupState(this.deps.state);
     }
   }
@@ -132,7 +129,9 @@ export class ControlledTabService {
       return;
     }
 
-    this.deps.state.controlledTabId ??= tabId;
+    if (this.deps.state.controlledTabId == null) {
+      setControlledTab(this.deps.state, tabId);
+    }
     if (this.deps.state.controlledTabId === tabId) {
       this.pendingControlledNavigationUrl = null;
     }
@@ -170,11 +169,12 @@ export class ControlledTabService {
     const session = selectSession(this.deps.state);
     const sessionPlugin = session ? getPlugin(session.serviceId) : null;
 
-    if (this.controlledContext && this.controlledContext.mediaId !== room.playback.mediaId) {
+    const controlledContext = this.deps.state.controlledContext;
+    if (controlledContext && controlledContext.mediaId !== room.playback.mediaId) {
       log.debug(
         {
           tabId: this.deps.state.controlledTabId,
-          currentMediaId: this.controlledContext.mediaId,
+          currentMediaId: controlledContext.mediaId,
           roomMediaId: room.playback.mediaId,
         },
         'controlled_tab:navigate_for_media_mismatch',
@@ -196,8 +196,7 @@ export class ControlledTabService {
     }
 
     if (result.context) {
-      this.controlledContext = result.context;
-      this.deps.state.contentContext = result.context;
+      this.deps.state.controlledContext = result.context;
     }
 
     this.deps.state.lastWarning = result.applied ? null : (result.reason ?? 'Sync was skipped.');
@@ -244,7 +243,8 @@ export class ControlledTabService {
       'controlled_tab:require_started',
     );
 
-    if (!this.deps.state.activeTab.tabId || !this.deps.state.activeTab.isWatchPage) {
+    const tabId = this.deps.state.activeTab.tabId;
+    if (tabId == null || !this.deps.state.activeTab.isWatchPage) {
       throw new Error('Open a supported watch page before starting a party.');
     }
 
@@ -253,7 +253,7 @@ export class ControlledTabService {
       throw new Error('This tab is not on a supported streaming service.');
     }
 
-    const context = this.deps.state.contentContext;
+    const context = await this.requestContextFromTab(tabId);
     if (!isReadyServiceContentContext(context)) {
       throw new Error(`${plugin.descriptor.label} player is not ready yet.`);
     }
@@ -262,7 +262,7 @@ export class ControlledTabService {
       throw new Error('Active tab and reported service disagree. Refresh the tab.');
     }
 
-    const playback = await this.requestPlaybackFromTab(this.deps.state.activeTab.tabId);
+    const playback = await this.requestPlaybackFromTab(tabId);
 
     if (!playback || playback.mediaId !== context.mediaId) {
       throw new Error(`${plugin.descriptor.label} playback state is not ready yet.`);
@@ -270,14 +270,14 @@ export class ControlledTabService {
 
     log.debug(
       {
-        tabId: this.deps.state.activeTab.tabId,
+        tabId,
         mediaId: playback.mediaId,
         playing: playback.playing,
         positionSec: playback.positionSec,
       },
       'controlled_tab:require_ok',
     );
-    return { context, playback };
+    return { tabId, context, playback };
   }
 
   async getFreshActiveTabId(): Promise<number> {
@@ -290,7 +290,17 @@ export class ControlledTabService {
   }
 
   getControlledTabContext(): ServiceContentContext | null {
-    return this.controlledContext;
+    return this.deps.state.controlledContext;
+  }
+
+  private async requestContextFromTab(tabId: number): Promise<ServiceContentContext | null> {
+    try {
+      const response = await sendMessage('party:request-context', undefined, { tabId });
+      return response ?? null;
+    } catch (error) {
+      log.trace({ tabId, error: getLogError(error) }, 'controlled_tab:context_request_failed');
+      return null;
+    }
   }
 
   private async requestPlaybackFromTab(tabId: number): Promise<PlaybackUpdateDraft | null> {

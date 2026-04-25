@@ -17,11 +17,7 @@
 
   let joinCode = $state("");
 
-  const activeDescriptor = $derived(
-    getServiceDescriptor(
-      popup.activeTab.activeServiceId ?? popup.contentContext?.serviceId,
-    ),
-  );
+  const activeDescriptor = $derived(getServiceDescriptor(popup.activeTab.activeServiceId));
 
   const isReady = $derived(popup.activeTab.isWatchPage);
   const canCreate = $derived(isReady && !isBusy);
@@ -29,11 +25,7 @@
 
   const title = $derived.by(() => {
     if (isReady) {
-      return (
-        popup.contentContext?.mediaTitle ??
-        activeDescriptor?.label ??
-        "Ready to start"
-      );
+      return popup.activeTab.title || activeDescriptor?.label || "Ready to start";
     }
     return "Open a video page to create a room";
   });
@@ -47,9 +39,7 @@
     const watchPageHint = SUPPORTED_SERVICE_DESCRIPTORS.map(
       (d) => d.watchPathHint,
     ).join(", ");
-    return popup.contentContext?.issue
-      ? `${popup.contentContext.issue} You can still join with a code and be redirected automatically.`
-      : `Create rooms from a playback page — try ${watchPageHint}. You can join with a code from any tab.`;
+    return `Create rooms from a playback page — try ${watchPageHint}. You can join with a code from any tab.`;
   });
 
   const trimmedCode = $derived(joinCode.trim());

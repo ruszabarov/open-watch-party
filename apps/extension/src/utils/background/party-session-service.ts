@@ -22,9 +22,11 @@ import { syncPopupState } from './popup-state-item';
 import { createRealtimeConnection, type RealtimeConnection } from './realtime-connection';
 import type { BackgroundState } from './state';
 import {
+  clearControlledTab,
   clearSession,
   normalizeServerUrl,
   selectSession,
+  setControlledTab,
   setJoinedSession,
   setSessionError,
   updateSessionConnectionStatus,
@@ -79,7 +81,7 @@ export class PartySessionService {
 
   async createRoom(): Promise<void> {
     log.info('session:create_room_started');
-    const { context, playback } = await this.controlledTab.requireControllableWatchTab();
+    const { tabId, context, playback } = await this.controlledTab.requireControllableWatchTab();
 
     const response = await this.emitRoomCreate({
       memberId: this.ensureMemberId(),
@@ -88,7 +90,7 @@ export class PartySessionService {
       initialPlayback: playback,
     });
 
-    this.state.controlledTabId = this.state.activeTab.tabId;
+    setControlledTab(this.state, tabId, context);
     await this.applyRoomResponse(response);
     await this.controlledTab.applySnapshotToControlledTab();
     log.info(
@@ -110,7 +112,7 @@ export class PartySessionService {
       memberName: this.state.settings.memberName,
     });
 
-    this.state.controlledTabId = tabId;
+    setControlledTab(this.state, tabId);
     await this.applyRoomResponse(response);
 
     try {
@@ -151,6 +153,7 @@ export class PartySessionService {
 
     this.closeConnection();
     clearSession(this.state);
+    clearControlledTab(this.state);
     await this.settingsStore.persist();
     syncPopupState(this.state);
     log.info('session:leave_room_ok');
