@@ -1,13 +1,5 @@
 import type { ServiceId } from '@open-watch-party/shared';
 
-export interface ActiveTabSummary {
-  tabId: number | null;
-  title: string;
-  url: string;
-  activeServiceId: ServiceId | null;
-  isWatchPage: boolean;
-}
-
 export interface ServiceContentContext {
   serviceId: ServiceId;
   href: string;

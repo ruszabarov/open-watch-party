@@ -3,7 +3,7 @@ import type { ConnectionStatus, PartySnapshot } from '@open-watch-party/shared';
 import { sanitizeMemberName, type ServiceId } from '@open-watch-party/shared';
 import { match, P } from 'ts-pattern';
 
-import type { ActiveTabSummary, ServiceContentContext } from '../protocol/extension';
+import type { ServiceContentContext } from '../protocol/extension';
 
 export type SessionInfo = {
   roomCode: string;
@@ -39,7 +39,6 @@ export type BackgroundState = {
     memberName: string;
   };
   sessionState: BackgroundSessionState;
-  activeTab: ActiveTabSummary;
   controlledTab: {
     tabId: number;
     context: ServiceContentContext;
@@ -54,7 +53,6 @@ export function createBackgroundState(): BackgroundState {
       memberName: createGuestName(),
     },
     sessionState: createIdleSessionState(),
-    activeTab: createEmptyActiveTabSummary(),
     controlledTab: null,
     lastError: null,
     lastWarning: null,
@@ -198,16 +196,6 @@ export function updatePersistedSession(state: BackgroundState, session: SessionI
         session,
         connectionStatus: selectConnectionStatus(state),
       };
-}
-
-export function createEmptyActiveTabSummary(): ActiveTabSummary {
-  return {
-    tabId: null,
-    title: '',
-    url: '',
-    activeServiceId: null,
-    isWatchPage: false,
-  };
 }
 
 export function normalizeMemberName(value: string): string {

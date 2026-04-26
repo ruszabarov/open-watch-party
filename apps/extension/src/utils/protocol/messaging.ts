@@ -18,8 +18,8 @@ export interface ExtensionProtocolMap {
   'party:request-context': () => ServiceContentContext | null;
   'party:request-playback': () => PlaybackUpdateDraft | null;
   'party:apply-snapshot': (payload: { snapshot: PartySnapshot }) => ApplySnapshotResult;
-  'popup:create-room': () => void;
-  'popup:join-room': (payload: { roomCode: string }) => void;
+  'popup:create-room': (payload: { tabId: number }) => void;
+  'popup:join-room': (payload: { roomCode: string; tabId: number }) => void;
   'popup:leave-room': () => void;
   'popup:update-settings': (payload: { memberName: string }) => void;
 }

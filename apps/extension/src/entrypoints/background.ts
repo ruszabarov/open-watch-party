@@ -10,32 +10,27 @@ import {
   syncBackgroundState,
   type BackgroundState,
 } from '../utils/background/state';
-import { ActiveTabTracker } from '../utils/background/active-tab-tracker';
 import { ControlledTabService } from '../utils/background/controlled-tab-service';
 
 export default defineBackground(() => {
   const state = createBackgroundState();
   const bus = createBackgroundBus();
   const settingsStore = new SettingsStore(state);
-  const activeTabTracker = new ActiveTabTracker(state);
-  const controlledTabService = new ControlledTabService(state, bus, activeTabTracker);
+  const controlledTabService = new ControlledTabService(state, bus);
   const partySessionService = new PartySessionService(
     state,
     bus,
     settingsStore,
-    activeTabTracker,
     controlledTabService,
   );
 
   registerContentHandlers(controlledTabService);
   registerPopupHandlers(state, settingsStore, partySessionService);
-  activeTabTracker.registerEventHandlers();
   controlledTabService.registerEventHandlers();
   partySessionService.registerEventHandlers();
 
   void (async () => {
     await settingsStore.hydrate();
-    await activeTabTracker.refreshActiveTab();
     await partySessionService.connectForStoredSession();
   })();
 });
@@ -54,10 +49,12 @@ function registerPopupHandlers(
   settingsStore: SettingsStore,
   partySessionService: PartySessionService,
 ): void {
-  onMessage('popup:create-room', () => runMutation(state, () => partySessionService.createRoom()));
+  onMessage('popup:create-room', ({ data }) =>
+    runMutation(state, () => partySessionService.createRoom(data.tabId)),
+  );
 
   onMessage('popup:join-room', ({ data }) =>
-    runMutation(state, () => partySessionService.joinRoom(data.roomCode)),
+    runMutation(state, () => partySessionService.joinRoom(data.roomCode, data.tabId)),
   );
 
   onMessage('popup:leave-room', () => runMutation(state, () => partySessionService.leaveRoom()));

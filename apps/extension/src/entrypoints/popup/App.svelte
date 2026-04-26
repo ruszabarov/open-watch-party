@@ -7,6 +7,10 @@
     type BackgroundState,
   } from '../../utils/background/state';
   import { sendMessage } from '../../utils/protocol/messaging';
+  import {
+    createEmptyActiveTabSummary,
+    queryActiveTabSummary,
+  } from '../../utils/active-tab';
   import { getErrorMessage } from '../../utils/errors';
 
   import Header from '../../components/popup/Header.svelte';
@@ -16,6 +20,7 @@
   import Notice from '../../components/popup/Notice.svelte';
 
   let popup: BackgroundState = $state(createBackgroundState());
+  let activeTab = $state(createEmptyActiveTabSummary());
   let isBusy = $state(false);
   let settingsOpen = $state(false);
 
@@ -37,12 +42,20 @@
     }
   }
 
+  function requireActiveTabId(): number {
+    if (activeTab.tabId == null) {
+      throw new Error('Open a browser tab before continuing.');
+    }
+
+    return activeTab.tabId;
+  }
+
   function handleCreateRoom(): void {
-    void perform(() => sendMessage('popup:create-room', undefined));
+    void perform(() => sendMessage('popup:create-room', { tabId: requireActiveTabId() }));
   }
 
   function handleJoinRoom(roomCode: string): void {
-    void perform(() => sendMessage('popup:join-room', { roomCode }));
+    void perform(() => sendMessage('popup:join-room', { roomCode, tabId: requireActiveTabId() }));
   }
 
   function handleLeaveRoom(): void {
@@ -71,6 +84,7 @@
 
   $effect(() => {
     backgroundStateItem.getValue().then((v) => { popup = v; });
+    queryActiveTabSummary().then((v) => { activeTab = v; }).catch(setLastError);
 
     const unwatch = backgroundStateItem.watch((newValue) => {
       popup = newValue;
@@ -106,7 +120,7 @@
           />
         {:else}
           <Lobby
-            popup={popup}
+            activeTab={activeTab}
             {isBusy}
             onCreateRoom={handleCreateRoom}
             onJoinRoom={handleJoinRoom}

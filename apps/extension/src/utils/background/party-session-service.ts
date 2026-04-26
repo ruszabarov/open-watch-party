@@ -35,7 +35,6 @@ import {
 } from './state';
 import type { SettingsStore } from './settings-store';
 import type { ControlledTabService } from './controlled-tab-service';
-import type { ActiveTabTracker } from './active-tab-tracker';
 import { SERVER_URL } from '../config';
 
 export class PartySessionService {
@@ -45,7 +44,6 @@ export class PartySessionService {
     private readonly state: BackgroundState,
     private readonly bus: BackgroundBus,
     private readonly settingsStore: SettingsStore,
-    private readonly activeTabTracker: ActiveTabTracker,
     private readonly controlledTab: ControlledTabService,
   ) {}
 
@@ -81,8 +79,8 @@ export class PartySessionService {
     }
   }
 
-  async createRoom(): Promise<void> {
-    const { tabId, context, playback } = await this.controlledTab.requireControllableWatchTab();
+  async createRoom(tabId: number): Promise<void> {
+    const { context, playback } = await this.controlledTab.requireControllableWatchTab(tabId);
 
     const response = await this.emitRoomCreate({
       memberId: this.ensureMemberId(),
@@ -96,9 +94,7 @@ export class PartySessionService {
     this.bus.emit('session:snapshot-updated', undefined);
   }
 
-  async joinRoom(roomCode: string): Promise<void> {
-    const tabId = await this.activeTabTracker.requireActiveTabId();
-
+  async joinRoom(roomCode: string, tabId: number): Promise<void> {
     const response = await this.emitRoomJoin({
       roomCode: normalizeRoomCode(roomCode),
       memberId: this.ensureMemberId(),

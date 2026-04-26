@@ -11,7 +11,6 @@ import {
   syncBackgroundState,
   type BackgroundState,
 } from './state';
-import type { ActiveTabTracker } from './active-tab-tracker';
 import type { BackgroundBus } from './bus';
 
 interface ControllableWatchTab {
@@ -24,7 +23,6 @@ export class ControlledTabService {
   constructor(
     private readonly state: BackgroundState,
     private readonly bus: BackgroundBus,
-    private readonly activeTabTracker: ActiveTabTracker,
   ) {}
 
   registerEventHandlers(): void {
@@ -155,26 +153,20 @@ export class ControlledTabService {
     }
   }
 
-  async requireControllableWatchTab(): Promise<ControllableWatchTab> {
-    await this.activeTabTracker.refreshActiveTab(false);
-
-    const tabId = this.state.activeTab.tabId;
-    if (tabId == null || !this.state.activeTab.isWatchPage) {
+  async requireControllableWatchTab(tabId: number): Promise<ControllableWatchTab> {
+    const context = await this.requestContextFromTab(tabId);
+    if (!context) {
       throw new Error('Open a supported watch page before starting a party.');
     }
 
-    const plugin = getPlugin(this.state.activeTab.activeServiceId);
+    const plugin = getPlugin(context.serviceId);
     if (!plugin) {
       throw new Error('This tab is not on a supported streaming service.');
     }
 
-    const context = await this.requestContextFromTab(tabId);
-    if (!context) {
-      throw new Error(`${plugin.descriptor.label} player is not ready yet.`);
-    }
-
-    if (context.serviceId !== plugin.id) {
-      throw new Error('Active tab and reported service disagree. Refresh the tab.');
+    const parsedContextUrl = plugin.parseUrl(context.href);
+    if (!parsedContextUrl?.mediaId) {
+      throw new Error(`${plugin.descriptor.label} tab is not on a supported watch page.`);
     }
 
     const playback = await this.requestPlaybackFromTab(tabId);

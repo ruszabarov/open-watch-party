@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { BackgroundState } from "../../utils/background/state";
+  import type { ActiveTabSummary } from "../../utils/active-tab";
   import {
     SUPPORTED_SERVICE_DESCRIPTORS,
     getServiceDescriptor,
@@ -7,25 +7,25 @@
   import ServiceBadge from "./ServiceBadge.svelte";
 
   interface Props {
-    popup: BackgroundState;
+    activeTab: ActiveTabSummary;
     isBusy: boolean;
     onCreateRoom: () => void;
     onJoinRoom: (code: string) => void;
   }
 
-  const { popup, isBusy, onCreateRoom, onJoinRoom }: Props = $props();
+  const { activeTab, isBusy, onCreateRoom, onJoinRoom }: Props = $props();
 
   let joinCode = $state("");
 
-  const activeDescriptor = $derived(getServiceDescriptor(popup.activeTab.activeServiceId));
+  const activeDescriptor = $derived(getServiceDescriptor(activeTab.activeServiceId));
 
-  const isReady = $derived(popup.activeTab.isWatchPage);
+  const isReady = $derived(activeTab.isWatchPage);
   const canCreate = $derived(isReady && !isBusy);
-  const canJoin = $derived(!isBusy);
+  const canJoin = $derived(activeTab.tabId != null && !isBusy);
 
   const title = $derived.by(() => {
     if (isReady) {
-      return popup.activeTab.title || activeDescriptor?.label || "Ready to start";
+      return activeTab.title || activeDescriptor?.label || "Ready to start";
     }
     return "Open a video page to create a room";
   });
