@@ -353,6 +353,27 @@ describe('socket handlers', () => {
     });
   });
 
+  it('broadcasts room state when a bound socket disconnects', () => {
+    const { io, service } = createServiceContext();
+    const hostSocket = connectSocket(service, 'socket-host');
+    const guestSocket = connectSocket(service, 'socket-guest');
+    const room = createRoom(hostSocket);
+    expect(joinRoom(guestSocket, room.snapshot.roomCode)).toMatchObject({ ok: true });
+
+    const disconnectHandler = hostSocket.handlers.get('disconnect');
+    if (!disconnectHandler) {
+      throw new Error('Expected disconnect handler to be registered.');
+    }
+
+    disconnectHandler();
+
+    expect(io.emitted).toHaveLength(1);
+    expect(io.emitted[0]).toMatchObject({
+      room: room.snapshot.roomCode,
+      event: 'room:state',
+    });
+  });
+
   it('disconnects the prior socket when the same member reconnects', () => {
     const { service, io } = createServiceContext();
     const priorSocket = connectSocket(service, 'socket-old');
