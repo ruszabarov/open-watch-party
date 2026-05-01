@@ -70,7 +70,6 @@ export class PartySessionService {
         roomCode: session.roomCode,
         memberId: session.memberId,
         memberName: this.state.settings.memberName,
-        serviceId: session.serviceId,
       });
 
       await this.applyRoomResponse(response);
@@ -85,12 +84,13 @@ export class PartySessionService {
     this.assertNoActiveSession();
 
     const { context, playback } = await this.controlledTab.requireControllableWatchTab(tabId);
+    const { serviceId: _playbackServiceId, ...initialPlayback } = playback;
 
     const response = await this.emitRoomCreate({
       memberId: this.ensureMemberId(),
       memberName: this.state.settings.memberName,
       serviceId: context.serviceId,
-      initialPlayback: playback,
+      initialPlayback,
     });
 
     setControlledTab(this.state, tabId, context);
@@ -227,7 +227,6 @@ export class PartySessionService {
         roomCode: session.roomCode,
         memberId: session.memberId,
         memberName: this.state.settings.memberName,
-        serviceId: session.serviceId,
       });
 
       await this.applyRoomResponse(response);
@@ -289,7 +288,7 @@ export class PartySessionService {
     const connection = await this.getConnection();
     const response = await connection.request(
       'playback:update',
-      this.validateOutboundPayload(playbackUpdateRequestSchema, { update }),
+      this.validateOutboundPayload(playbackUpdateRequestSchema, update),
     );
     return this.unwrapAckResponse(response);
   }

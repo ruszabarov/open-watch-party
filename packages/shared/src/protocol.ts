@@ -89,7 +89,7 @@ export const playbackDraftSchema = z.object({
   playing: z.boolean(),
 });
 
-export const playbackStateInputSchema = playbackDraftSchema;
+export const playbackStateInputSchema = playbackDraftSchema.omit({ serviceId: true });
 
 export const playbackUpdateSchema = playbackDraftSchema.extend({
   clientSequence: z.number().int().min(0),
@@ -106,16 +106,11 @@ export const joinRoomRequestSchema = z.object({
   roomCode: roomCodeSchema,
   memberId: memberIdSchema,
   memberName: memberNameSchema,
-  serviceId: serviceIdSchema.optional(),
 });
 
 export const leaveRoomRequestSchema = z.object({}).strict();
 
-export const playbackUpdateRequestSchema = z
-  .object({
-    update: playbackUpdateSchema,
-  })
-  .strict();
+export const playbackUpdateRequestSchema = playbackUpdateSchema.strict();
 
 export type PlaybackStateInput = z.output<typeof playbackStateInputSchema>;
 export type PlaybackUpdate = z.output<typeof playbackUpdateSchema>;

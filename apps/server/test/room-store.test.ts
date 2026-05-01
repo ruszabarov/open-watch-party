@@ -11,7 +11,6 @@ function createRoom(roomCode: string, now = 1_000) {
       memberName: 'Member A',
       serviceId: 'youtube',
       initialPlayback: {
-        serviceId: 'youtube',
         mediaId: 'abc123',
         title: 'Clip',
         playing: true,

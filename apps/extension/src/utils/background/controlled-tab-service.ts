@@ -90,7 +90,7 @@ export class ControlledTabService {
 
     if (!this.state.controlledTab) {
       const context = await this.requestContextFromTab(tabId);
-      if (context?.mediaId === room.playback.mediaId) {
+      if (context?.serviceId === room.serviceId && context.mediaId === room.playback.mediaId) {
         setControlledTab(this.state, tabId, context);
       }
     }
@@ -111,7 +111,10 @@ export class ControlledTabService {
     const session = selectSession(this.state);
     const sessionPlugin = session ? getPlugin(session.serviceId) : null;
 
-    if (controlledTab.context.mediaId !== room.playback.mediaId) {
+    if (
+      controlledTab.context.serviceId !== room.serviceId ||
+      controlledTab.context.mediaId !== room.playback.mediaId
+    ) {
       await this.navigateControlledTabToRoom(controlledTab.tabId, room.watchUrl, {
         active: false,
       });

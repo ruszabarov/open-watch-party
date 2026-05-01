@@ -67,8 +67,7 @@ docker compose up --build
 Server environment variables:
 
 - `PORT`: HTTP and WebSocket port inside the container. Defaults to `8787`.
-- `ROOM_IDLE_TTL_MS`: idle room expiry window. Defaults to `21600000` (6 hours).
-- `MAX_ROOMS`: in-memory room cap. Defaults to `1000`; the least recently used room is evicted when this cap is reached.
+- `LOG_LEVEL`: server log level. Defaults to `info`.
 
 Health check:
 

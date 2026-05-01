@@ -35,7 +35,6 @@ describe('room reducer', () => {
         memberName: 'Member A',
         serviceId: 'netflix',
         initialPlayback: {
-          serviceId: 'netflix',
           mediaId: '123',
           title: 'Example',
           positionSec: 0,
@@ -90,7 +89,6 @@ describe('room reducer', () => {
         memberName: 'Member A',
         serviceId: 'netflix',
         initialPlayback: {
-          serviceId: 'netflix',
           mediaId: '123',
           title: 'Example',
           positionSec: 0,
@@ -144,7 +142,6 @@ describe('room reducer', () => {
         memberName: 'Member A',
         serviceId: 'netflix',
         initialPlayback: {
-          serviceId: 'netflix',
           mediaId: '456',
           title: 'Example',
           positionSec: 0,
@@ -185,7 +182,6 @@ describe('room reducer', () => {
         memberName: 'Member A',
         serviceId: 'youtube',
         initialPlayback: {
-          serviceId: 'youtube',
           mediaId: 'abc123',
           title: 'Clip',
           positionSec: 4,
@@ -276,7 +272,6 @@ describe('room reducer', () => {
         memberName: 'Member A',
         serviceId: 'youtube',
         initialPlayback: {
-          serviceId: 'youtube',
           mediaId: 'abc/123',
           title: 'Clip',
           positionSec: 4,
@@ -292,7 +287,6 @@ describe('room reducer', () => {
       memberName: 'Member A',
       serviceId: 'youtube',
       initialPlayback: {
-        serviceId: 'youtube',
         mediaId: 'abc123',
         title: 'Clip',
         positionSec: 4,
@@ -323,7 +317,6 @@ describe('room reducer', () => {
       memberName: 'Member A',
       serviceId: 'youtube',
       initialPlayback: {
-        serviceId: 'youtube',
         mediaId: 'abc123',
         title: 'Clip',
         positionSec: 4,
@@ -344,7 +337,6 @@ describe('protocol schemas', () => {
       memberName: ` ${'A'.repeat(MAX_MEMBER_NAME_LENGTH + 10)} \u0000`,
       serviceId: 'youtube',
       initialPlayback: {
-        serviceId: 'youtube',
         mediaId: ' abc123 ',
         title: `  ${'T'.repeat(MAX_TITLE_LENGTH + 20)}  `,
         playing: true,
@@ -371,13 +363,11 @@ describe('protocol schemas', () => {
 
   it('rejects malformed playback updates', () => {
     const result = playbackUpdateRequestSchema.safeParse({
-      update: {
-        serviceId: 'youtube',
-        mediaId: 'abc123',
-        playing: true,
-        positionSec: Number.POSITIVE_INFINITY,
-        clientSequence: 0,
-      },
+      serviceId: 'youtube',
+      mediaId: 'abc123',
+      playing: true,
+      positionSec: Number.POSITIVE_INFINITY,
+      clientSequence: 0,
     });
 
     expect(result.success).toBe(false);
@@ -385,13 +375,11 @@ describe('protocol schemas', () => {
 
   it('rejects playback updates with oversized positions', () => {
     const result = playbackUpdateRequestSchema.safeParse({
-      update: {
-        serviceId: 'youtube',
-        mediaId: 'abc123',
-        playing: true,
-        positionSec: 1e308,
-        clientSequence: 0,
-      },
+      serviceId: 'youtube',
+      mediaId: 'abc123',
+      playing: true,
+      positionSec: 1e308,
+      clientSequence: 0,
     });
 
     expect(result.success).toBe(false);
@@ -421,7 +409,6 @@ describe('protocol schemas', () => {
         memberName: 'Member A',
         serviceId: 'netflix',
         initialPlayback: {
-          serviceId: 'netflix',
           mediaId: '123',
           title: 'Example',
           positionSec: MAX_PLAYBACK_POSITION_SEC - 1,
@@ -441,7 +428,6 @@ describe('protocol schemas', () => {
       memberName: 'Member A',
       serviceId: 'youtube',
       initialPlayback: {
-        serviceId: 'youtube',
         mediaId: 'abc123',
         title: 'Clip',
         positionSec: 4,
