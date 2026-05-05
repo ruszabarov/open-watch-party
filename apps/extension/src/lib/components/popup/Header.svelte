@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Settings } from '@lucide/svelte';
   import type { ConnectionStatus } from '@open-watch-party/shared';
+  import { Button } from '$lib/components/ui/button/index.js';
   import ConnectionDot from './ConnectionDot.svelte';
 
   interface Props {
@@ -14,22 +15,22 @@
   const settingsCopy = $derived(settingsOpen ? 'Lobby' : 'Settings');
 </script>
 
-<header class="flex items-center justify-between border-b border-stone-200 bg-stone-50 px-3 py-3">
+<header class="flex items-center justify-between border-b border-border bg-muted/40 px-3 py-3">
   <div class="font-semibold">
     <span class="text-sm">Open Watch Party</span>
   </div>
 
   <div class="flex shrink-0 items-center gap-2">
-    <button
-      class="btn-secondary"
-      type="button"
+    <Button
+      variant="outline"
+      class="font-semibold"
       aria-label={settingsLabel}
       aria-pressed={settingsOpen}
       onclick={onToggleSettings}
     >
       <Settings size={16} strokeWidth={1.75} aria-hidden="true" />
       <span>{settingsCopy}</span>
-    </button>
+    </Button>
     <ConnectionDot {status} />
   </div>
 </header>

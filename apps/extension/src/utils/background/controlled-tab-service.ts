@@ -2,7 +2,7 @@ import { browser } from 'wxt/browser';
 import type { PartySnapshot, PlaybackUpdateDraft } from '@open-watch-party/shared';
 import type { ApplySnapshotResult, ServiceContentContext } from '../protocol/extension';
 import { sendMessage } from '../protocol/messaging';
-import { getPlugin } from '../services/registry';
+import { getPlugin } from '../services/plugins';
 import {
   clearControlledTab,
   selectRoom,

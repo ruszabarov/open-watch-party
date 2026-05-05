@@ -1,6 +1,9 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import type { BackgroundState } from '../../utils/background/state';
+  import { Button } from '$lib/components/ui/button/index.js';
+  import { Input } from '$lib/components/ui/input/index.js';
+  import { Label } from '$lib/components/ui/label/index.js';
+  import type { BackgroundState } from '~/utils/background/state';
 
   interface Props {
     settings: BackgroundState['settings'];
@@ -25,22 +28,27 @@
 </script>
 
 <form class="flex flex-col gap-3" onsubmit={handleSave}>
-  <label class="flex flex-col gap-2">
-    <span class="label-tiny">Display name</span>
-    <input
+  <div class="flex flex-col gap-2">
+    <Label
+      class="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+      for="display-name"
+    >
+      Display name
+    </Label>
+    <Input
+      id="display-name"
       type="text"
-      maxlength="32"
+      maxlength={32}
       placeholder="Guest"
-      class="input-field"
       bind:value={memberName}
     />
-  </label>
+  </div>
 
-  <button
-    class="btn-primary"
+  <Button
+    class="font-semibold"
     type="submit"
     disabled={isBusy || !dirty}
   >
     {dirty ? 'Save changes' : 'Saved'}
-  </button>
+  </Button>
 </form>

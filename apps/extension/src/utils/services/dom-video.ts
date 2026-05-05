@@ -3,7 +3,7 @@ import { defineContentScript } from 'wxt/utils/define-content-script';
 
 import type { ServiceContentContext } from '../protocol/extension';
 import { onMessage, sendMessage } from '../protocol/messaging';
-import { SERVICE_PLUGIN_BY_ID } from './registry';
+import { SERVICE_PLUGIN_BY_ID } from './plugins';
 
 const VIDEO_EVENTS = ['play', 'pause', 'seeked', 'loadedmetadata', 'ended'] as const;
 const SEEK_THRESHOLD_SEC = 1.5;

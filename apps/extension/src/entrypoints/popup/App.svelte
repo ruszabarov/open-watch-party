@@ -11,14 +11,16 @@
   import {
     createEmptyActiveTabSummary,
     queryActiveTabSummary,
-  } from '../../utils/active-tab';
-  import { getErrorMessage } from '../../utils/errors';
+  } from '$lib/active-tab.js';
+  import { getErrorMessage } from '$lib/errors.js';
 
-  import Header from '../../components/popup/Header.svelte';
-  import Lobby from '../../components/popup/Lobby.svelte';
-  import Room from '../../components/popup/Room.svelte';
-  import Settings from '../../components/popup/Settings.svelte';
-  import Notice from '../../components/popup/Notice.svelte';
+  import Header from '$lib/components/popup/Header.svelte';
+  import Lobby from '$lib/components/popup/Lobby.svelte';
+  import Room from '$lib/components/popup/Room.svelte';
+  import Settings from '$lib/components/popup/Settings.svelte';
+  import Notice from '$lib/components/popup/Notice.svelte';
+  import { Button } from '$lib/components/ui/button/index.js';
+  import { Card, CardContent } from '$lib/components/ui/card/index.js';
 
   let popup: BackgroundState = $state(createBackgroundState());
   let activeTab = $state(createEmptyActiveTabSummary());
@@ -103,7 +105,7 @@
   });
 </script>
 
-<div class="flex flex-col overflow-hidden bg-stone-50 text-stone-900">
+<div class="flex w-[360px] flex-col overflow-hidden bg-muted/40 text-foreground">
   <Header
     status={connectionStatus}
     settingsOpen={settingsOpen}
@@ -132,25 +134,29 @@
           {/if}
         {:else if session}
           <section class="flex flex-col gap-3">
-            <div class="card flex flex-col gap-3">
-              <div class="space-y-1">
-                <p class="m-0 label-tiny">Active room</p>
-                <p class="m-0 text-sm font-semibold text-stone-900">
-                  Reconnecting to room {session.roomCode}
-                </p>
-                <p class="m-0 text-sm leading-5 text-stone-500">
-                  {leaveFirstMessage}
-                </p>
-              </div>
-              <button
-                class="btn-danger"
-                type="button"
-                onclick={handleLeaveRoom}
-                disabled={isBusy}
-              >
-                Leave
-              </button>
-            </div>
+            <Card size="sm">
+              <CardContent class="flex flex-col gap-3">
+                <div class="space-y-1">
+                  <p class="m-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Active room
+                  </p>
+                  <p class="m-0 text-sm font-semibold text-foreground">
+                    Reconnecting to room {session.roomCode}
+                  </p>
+                  <p class="m-0 text-sm leading-5 text-muted-foreground">
+                    {leaveFirstMessage}
+                  </p>
+                </div>
+                <Button
+                  variant="destructive"
+                  class="font-semibold"
+                  onclick={handleLeaveRoom}
+                  disabled={isBusy}
+                >
+                  Leave
+                </Button>
+              </CardContent>
+            </Card>
           </section>
         {:else}
           <Lobby

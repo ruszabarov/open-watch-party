@@ -1,6 +1,6 @@
 import { defineBackground } from 'wxt/utils/define-background';
 
-import { getErrorMessage } from '../utils/errors';
+import { getErrorMessage } from '$lib/errors.js';
 import { onMessage } from '../utils/protocol/messaging';
 import { createBackgroundBus } from '../utils/background/bus';
 import { PartySessionService } from '../utils/background/party-session-service';

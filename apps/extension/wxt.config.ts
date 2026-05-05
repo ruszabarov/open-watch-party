@@ -1,10 +1,13 @@
 import { defineConfig } from 'wxt';
 import tailwindcss from '@tailwindcss/vite';
 import { SUPPORTED_SERVICE_CONTENT_MATCHES } from '@open-watch-party/shared';
+import path from 'path';
 
 const LOCAL_SERVER_URL = 'http://localhost:8787';
 
-const defaultServerUrl = process.env['SERVER_URL'] ?? LOCAL_SERVER_URL;
+const defaultServerUrl = (process.env['SERVER_URL'] ?? LOCAL_SERVER_URL)
+  .trim()
+  .replace(/\/+$/, '');
 
 const connectSrc = [
   "'self'",
@@ -27,8 +30,13 @@ export default defineConfig({
   modules: ['@wxt-dev/module-svelte'],
   vite: () => ({
     plugins: [tailwindcss()],
+    resolve: {
+      alias: {
+        $lib: path.resolve('./src/lib'),
+      },
+    },
     define: {
-      __WATCH_PARTY_DEFAULT_SERVER_URL__: JSON.stringify(defaultServerUrl),
+      __DEFAULT_SERVER_URL__: JSON.stringify(defaultServerUrl),
     },
   }),
   manifest: {

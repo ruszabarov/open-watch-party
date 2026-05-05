@@ -18,7 +18,7 @@ import type {
   RoomResponse,
 } from '@open-watch-party/shared';
 
-import { getErrorMessage } from '../errors';
+import { getErrorMessage } from '$lib/errors.js';
 import type { BackgroundBus } from './bus';
 import { RealtimeConnection } from './realtime-connection';
 import {
@@ -35,9 +35,9 @@ import {
 } from './state';
 import type { SettingsStore } from './settings-store';
 import type { ControlledTabService } from './controlled-tab-service';
-import { SERVER_URL } from '../config';
 
 const ACTIVE_ROOM_EXISTS_ERROR = 'Leave your current room before joining or creating another room.';
+const SERVER_URL = __DEFAULT_SERVER_URL__;
 
 export class PartySessionService {
   private connection: RealtimeConnection | null = null;

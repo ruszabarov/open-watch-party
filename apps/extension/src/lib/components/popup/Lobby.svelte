@@ -1,9 +1,12 @@
 <script lang="ts">
-  import type { ActiveTabSummary } from "../../utils/active-tab";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import { Input } from "$lib/components/ui/input/index.js";
+  import { Label } from "$lib/components/ui/label/index.js";
+  import type { ActiveTabSummary } from "$lib/active-tab.js";
   import {
     SUPPORTED_SERVICE_DESCRIPTORS,
     getServiceDescriptor,
-  } from "../../utils/services/registry";
+  } from "$lib/services/registry.js";
   import ServiceBadge from "./ServiceBadge.svelte";
 
   interface Props {
@@ -64,20 +67,19 @@
       <p class="m-0 text-sm font-semibold leading-5">
         {title}
       </p>
-      <p class="m-0 text-sm leading-5 text-stone-500">{hint}</p>
+      <p class="m-0 text-sm leading-5 text-muted-foreground">{hint}</p>
     </div>
   </div>
 
-  <button
-    class="btn-primary"
-    type="button"
+  <Button
+    class="font-semibold"
     onclick={onCreateRoom}
     disabled={!canCreate}
   >
     Create room
-  </button>
+  </Button>
 
-  <div class="h-px bg-stone-200" role="separator" aria-hidden="true"></div>
+  <div class="h-px bg-border" role="separator" aria-hidden="true"></div>
 
   <form
     class="flex flex-col gap-2"
@@ -86,28 +88,29 @@
       handleJoin();
     }}
   >
-    <label class="label-tiny" for="join-code">
+    <Label class="text-xs font-semibold uppercase tracking-wide text-muted-foreground" for="join-code">
       Have a code?
-    </label>
+    </Label>
     <div class="flex gap-2">
-      <input
+      <Input
         id="join-code"
         type="text"
-        maxlength="8"
+        maxlength={8}
         autocomplete="off"
         spellcheck="false"
         placeholder="ABC123"
-        class="input-field flex-1 font-mono font-semibold uppercase tracking-widest"
+        class="flex-1 font-mono font-semibold uppercase tracking-widest"
         bind:value={joinCode}
         onkeydowncapture={handleCodeKeydown}
       />
-      <button
-        class="btn-secondary"
+      <Button
+        variant="outline"
+        class="font-semibold"
         type="submit"
         disabled={!canJoin || !trimmedCode}
       >
         Join
-      </button>
+      </Button>
     </div>
   </form>
 </section>

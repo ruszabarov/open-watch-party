@@ -1,6 +1,6 @@
 import { browser, type Browser } from 'wxt/browser';
-import { findPluginByUrl } from './services/registry';
 import type { ServiceId } from '@open-watch-party/shared';
+import { findServiceByUrl } from './services/registry';
 
 type BrowserTab = Browser.tabs.Tab | undefined;
 
@@ -35,7 +35,7 @@ function summarizeActiveTab(tab: BrowserTab): ActiveTabSummary {
   }
 
   const url = tab.url ?? '';
-  const classification = findPluginByUrl(url);
+  const classification = findServiceByUrl(url);
 
   return {
     tabId: tab.id,
