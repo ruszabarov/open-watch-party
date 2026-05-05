@@ -16,19 +16,19 @@
   "dependencies": {
     "@lucide/svelte": "^1.14.0",
     "@open-watch-party/shared": "workspace:*",
-    "@tailwindcss/vite": "^4.2.4",
     "@webext-core/messaging": "^2.3.0",
     "mitt": "^3.0.1",
     "socket.io-client": "^4.8.3",
-    "tailwindcss": "^4.2.4",
     "ts-pattern": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.2.4",
     "@tsconfig/svelte": "^5.0.8",
     "@wxt-dev/module-svelte": "^2.0.5",
     "svelte": "^5.55.5",
     "svelte-check": "^4.4.6",
+    "tailwindcss": "^4.2.4",
     "tslib": "^2.8.1",
     "typescript": "^6.0.3",
     "wxt": "^0.20.25"
