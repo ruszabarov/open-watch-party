@@ -1,7 +1,7 @@
 services:
   open-watch-party-server:
     build:
-      context: .
+      context: ../..
       dockerfile: Dockerfile
     ports:
       - '8787:8787'

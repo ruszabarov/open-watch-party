@@ -98,7 +98,34 @@ docker run --rm -p 8787:8787 open-watch-party-server
 Or use Docker Compose:
 
 ```bash
-docker compose up --build
+docker compose -f apps/server/docker-compose.yml up --build
+```
+
+### VPS Deployment With Watchtower
+
+Use `apps/server/docker-compose.vps.yml` on the VPS to run the published GHCR
+image and automatically pull new `latest` images after server releases:
+
+```bash
+docker compose -f apps/server/docker-compose.vps.yml up -d
+```
+
+Watchtower checks every 5 minutes, updates only containers with the
+`com.centurylinklabs.watchtower.enable=true` label, restarts the server when a
+new image is available, and removes old images after successful updates.
+
+If the GHCR package is private, log in once on the VPS before starting Compose:
+
+```bash
+echo '<github_pat_with_read_packages>' | docker login ghcr.io -u '<github_username>' --password-stdin
+```
+
+Manual update or rollback commands:
+
+```bash
+docker compose -f apps/server/docker-compose.vps.yml pull open-watch-party-server
+docker compose -f apps/server/docker-compose.vps.yml up -d open-watch-party-server
+docker compose -f apps/server/docker-compose.vps.yml logs -f open-watch-party-server
 ```
 
 Server environment variables:
