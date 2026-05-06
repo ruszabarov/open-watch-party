@@ -1,16 +1,13 @@
 <script lang="ts">
   import { Settings } from '@lucide/svelte';
-  import type { ConnectionStatus } from '@open-watch-party/shared';
   import { Button } from '$lib/components/ui/button/index.js';
-  import ConnectionDot from './ConnectionDot.svelte';
 
   interface Props {
-    status: ConnectionStatus;
     settingsOpen: boolean;
     onToggleSettings: () => void;
   }
 
-  const { status, settingsOpen, onToggleSettings }: Props = $props();
+  const { settingsOpen, onToggleSettings }: Props = $props();
   const settingsLabel = $derived(settingsOpen ? 'Go to lobby' : 'Go to settings');
   const settingsCopy = $derived(settingsOpen ? 'Lobby' : 'Settings');
 </script>
@@ -31,6 +28,5 @@
       <Settings size={16} strokeWidth={1.75} aria-hidden="true" />
       <span>{settingsCopy}</span>
     </Button>
-    <ConnectionDot {status} />
   </div>
 </header>

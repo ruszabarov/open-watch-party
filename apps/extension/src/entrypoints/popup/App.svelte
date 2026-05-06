@@ -2,7 +2,6 @@
   import {
     backgroundStateItem,
     createBackgroundState,
-    selectConnectionStatus,
     selectRoom,
     selectSession,
     type BackgroundState,
@@ -27,7 +26,6 @@
   let isBusy = $state(false);
   let settingsOpen = $state(false);
 
-  const connectionStatus = $derived(selectConnectionStatus(popup));
   const room = $derived(selectRoom(popup));
   const session = $derived(selectSession(popup));
   const isActiveRoomOnCurrentTab = $derived(
@@ -106,11 +104,7 @@
 </script>
 
 <div class="flex w-[360px] flex-col overflow-hidden bg-muted/40 text-foreground">
-  <Header
-    status={connectionStatus}
-    settingsOpen={settingsOpen}
-    onToggleSettings={toggleSettings}
-  />
+  <Header settingsOpen={settingsOpen} onToggleSettings={toggleSettings} />
 
   <main class="p-3">
     {#if settingsOpen}
