@@ -1,4 +1,10 @@
-import type { ServiceDefinition } from '@open-watch-party/shared';
+import type { PartySnapshot, ServiceDefinition } from '@open-watch-party/shared';
+import type { ApplySnapshotResult } from '../protocol/extension';
+
+export interface PlaybackApplyContext {
+  video: HTMLVideoElement;
+  snapshot: PartySnapshot;
+}
 
 /**
  * Service integration plus the extension-only DOM hooks needed by a content script.
@@ -8,4 +14,5 @@ export type ServicePlugin = ServiceDefinition & {
   readonly playerNotReadyMessage: string;
   getVideo(): HTMLVideoElement | null;
   getMediaTitle(): string;
+  applyPlayback?(context: PlaybackApplyContext): Promise<ApplySnapshotResult>;
 };

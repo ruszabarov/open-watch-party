@@ -15,6 +15,17 @@ function isPluginUrl(plugin: { matchesUrl(url: URL): boolean }, rawUrl: string):
   return URL.canParse(rawUrl) && plugin.matchesUrl(new URL(rawUrl));
 }
 
+function roomMatchesContext(
+  room: PartySnapshot | null,
+  context: WatchPageContext,
+): room is PartySnapshot {
+  return (
+    room !== null &&
+    room.serviceId === context.serviceId &&
+    room.playback.mediaId === context.mediaId
+  );
+}
+
 export class ControlledTabService {
   constructor(
     private readonly store: BackgroundStore,
@@ -86,9 +97,10 @@ export class ControlledTabService {
 
     if (!this.state.controlledTab) {
       const context = await this.requestContextFromTab(tabId);
-      if (context?.serviceId === room.serviceId) {
-        this.store.trigger.setControlledTab({ tabId, context });
+      if (context) {
+        await this.adoptTabForRoom(tabId, context, room);
       }
+      return;
     }
 
     await this.applySnapshotToControlledTab();
@@ -198,5 +210,28 @@ export class ControlledTabService {
     } catch {
       return null;
     }
+  }
+
+  private async adoptTabForRoom(
+    tabId: number,
+    context: WatchPageContext,
+    room: PartySnapshot | null,
+  ): Promise<void> {
+    if (!roomMatchesContext(room, context)) {
+      return;
+    }
+
+    const result = await this.applySnapshotToTab(tabId, room);
+    const latestRoom = selectRoom(this.state);
+    if (!roomMatchesContext(latestRoom, context) || this.state.controlledTab) {
+      return;
+    }
+
+    this.store.trigger.setControlledTab({ tabId, context });
+    this.store.trigger.setLastWarning({
+      message: result?.applied
+        ? null
+        : (result?.reason ?? 'Controlled tab is not ready for sync yet.'),
+    });
   }
 }

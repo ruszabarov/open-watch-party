@@ -1,22 +1,49 @@
 import type { PlaybackUpdateDraft, ServiceId } from '@open-watch-party/shared';
 import { defineContentScript } from 'wxt/utils/define-content-script';
 
-import type { WatchPageContext } from '../protocol/extension';
+import type { ApplySnapshotResult, WatchPageContext } from '../protocol/extension';
 import { onMessage, sendMessage } from '../protocol/messaging';
-import { SERVICE_PLUGIN_BY_ID } from './plugins';
+import type { PlaybackApplyContext, ServicePlugin } from './types';
 
 const VIDEO_EVENTS = ['play', 'pause', 'seeked', 'loadedmetadata', 'ended'] as const;
 const SEEK_THRESHOLD_SEC = 1.5;
+const APPLIED_SNAPSHOT_EVENT_SUPPRESSION_MS = 750;
 
-export function runServiceContentScript(serviceId: ServiceId) {
-  const plugin = SERVICE_PLUGIN_BY_ID[serviceId];
+async function applyHtml5Playback({
+  video,
+  snapshot,
+}: PlaybackApplyContext): Promise<ApplySnapshotResult> {
+  const target = {
+    positionSec: snapshot.playback.positionSec,
+    playing: snapshot.playback.playing,
+  };
 
+  if (Math.abs(video.currentTime - target.positionSec) > SEEK_THRESHOLD_SEC) {
+    video.currentTime = target.positionSec;
+  }
+
+  if (target.playing && video.paused) {
+    try {
+      await video.play();
+    } catch {
+      return { applied: false, reason: 'Browser blocked playback start on this tab.' };
+    }
+  }
+
+  if (!target.playing && !video.paused) {
+    video.pause();
+  }
+
+  return { applied: true };
+}
+
+export function runServiceContentScript(serviceId: ServiceId, plugin: ServicePlugin) {
   return defineContentScript({
     matches: [...plugin.contentMatches],
     main() {
       let activeVideo: HTMLVideoElement | null = null;
       let lastContextKey: string | null = null;
-      let suppressNextEvent = false;
+      let suppressPlaybackEventsUntil = 0;
       let refreshFrame: number | null = null;
       let stopped = false;
 
@@ -43,29 +70,6 @@ export function runServiceContentScript(serviceId: ServiceId) {
         };
       };
 
-      const applyHtml5Playback = async (
-        video: HTMLVideoElement,
-        target: { positionSec: number; playing: boolean },
-      ): Promise<{ ok: true } | { ok: false; reason: string }> => {
-        if (Math.abs(video.currentTime - target.positionSec) > SEEK_THRESHOLD_SEC) {
-          video.currentTime = target.positionSec;
-        }
-
-        if (target.playing && video.paused) {
-          try {
-            await video.play();
-          } catch {
-            return { ok: false, reason: 'Browser blocked playback start on this tab.' };
-          }
-        }
-
-        if (!target.playing && !video.paused) {
-          video.pause();
-        }
-
-        return { ok: true };
-      };
-
       const sendContextIfChanged = () => {
         const context = readContext();
         const key = context ? `${context.serviceId}::${context.mediaId}` : null;
@@ -74,11 +78,13 @@ export function runServiceContentScript(serviceId: ServiceId) {
         lastContextKey = key;
 
         void sendMessage('content:context', context).catch(() => undefined);
+        if (context) {
+          void sendMessage('content:request-sync').catch(() => undefined);
+        }
       };
 
       const sendPlaybackUpdate = () => {
-        if (suppressNextEvent) {
-          suppressNextEvent = false;
+        if (performance.now() < suppressPlaybackEventsUntil) {
           return;
         }
 
@@ -125,12 +131,9 @@ export function runServiceContentScript(serviceId: ServiceId) {
       const pageObserver = new MutationObserver(scheduleRefresh);
       pageObserver.observe(document.documentElement, { childList: true, subtree: true });
 
-      const navigation = (window as Window & { navigation?: EventTarget }).navigation;
+      const navigation = window.navigation;
       navigation?.addEventListener('navigatesuccess', scheduleRefresh);
       window.addEventListener('popstate', scheduleRefresh);
-
-      refresh();
-      void sendMessage('content:request-sync').catch(() => undefined);
 
       const cleanups: Array<() => void> = [];
 
@@ -143,22 +146,25 @@ export function runServiceContentScript(serviceId: ServiceId) {
             return { applied: false, reason: plugin.playerNotReadyMessage };
           }
 
-          const target = {
-            positionSec: data.snapshot.playback.positionSec,
-            playing: data.snapshot.playback.playing,
-          };
+          suppressPlaybackEventsUntil = performance.now() + APPLIED_SNAPSHOT_EVENT_SUPPRESSION_MS;
 
-          suppressNextEvent = true;
+          const result = await (plugin.applyPlayback ?? applyHtml5Playback)({
+            video: activeVideo,
+            snapshot: data.snapshot,
+          }).catch(() => ({
+            applied: false,
+            reason: 'Sync failed on this tab.',
+          }));
 
-          const result = await applyHtml5Playback(activeVideo, target);
-
-          if (!result.ok) {
-            suppressNextEvent = false;
+          if (result.applied) {
+            suppressPlaybackEventsUntil = performance.now() + APPLIED_SNAPSHOT_EVENT_SUPPRESSION_MS;
           }
 
-          return result.ok ? { applied: true } : { applied: false, reason: result.reason };
+          return result;
         }),
       );
+
+      refresh();
 
       window.addEventListener(
         'beforeunload',

@@ -11,7 +11,7 @@ import type { ServicePlugin } from './types';
  *   1. Add its shared definition to `packages/shared/src/services.ts`.
  *   2. Create the extension DOM integration at `apps/extension/src/utils/services/<id>.ts`.
  *   3. Add a one-line entrypoint at `src/entrypoints/<id>.content.ts` via
- *      `runServiceContentScript('my-service-id')`.
+ *      `runServiceContentScript('my-service-id', MY_SERVICE)`.
  *   4. Append the plugin below.
  */
 export const SERVICE_PLUGIN_BY_ID = {
