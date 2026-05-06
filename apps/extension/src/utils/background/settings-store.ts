@@ -38,11 +38,6 @@ export class SettingsStore {
     await this.persist();
   }
 
-  async persistSession(session: SessionInfo | null): Promise<void> {
-    this.store.trigger.updatePersistedSession({ session });
-    await this.persist();
-  }
-
   async persist(): Promise<void> {
     const state = this.store.getSnapshot().context;
     const storedSettings: StoredSettings = {

@@ -77,10 +77,6 @@ export function selectRoom(state: BackgroundState): PartySnapshot | null {
     .exhaustive();
 }
 
-function selectConnectionStatus(state: BackgroundState): ConnectionStatus {
-  return state.sessionState.connectionStatus;
-}
-
 function createStoredSessionState(session: SessionInfo | null): BackgroundSessionState {
   return session
     ? { kind: 'stored-session', session, connectionStatus: 'disconnected' }
@@ -149,27 +145,25 @@ function updateSessionRoom(state: BackgroundState, room: PartySnapshot): Backgro
   };
 }
 
-function updateSessionFromPersistedSession(
-  state: BackgroundState,
-  session: SessionInfo | null,
-): BackgroundSessionState {
-  if (!session) {
-    return createIdleSessionState();
-  }
-
-  const room = selectRoom(state);
-  return room
-    ? {
-        kind: 'joined',
-        session,
-        room,
-        connectionStatus: selectConnectionStatus(state),
-      }
-    : {
-        kind: 'stored-session',
-        session,
-        connectionStatus: selectConnectionStatus(state),
-      };
+function advancePlaybackClientSequence(state: BackgroundState): BackgroundSessionState {
+  return match(state.sessionState)
+    .returnType<BackgroundSessionState>()
+    .with({ kind: 'idle' }, (idleSessionState) => idleSessionState)
+    .with({ kind: 'stored-session' }, (sessionState) => ({
+      ...sessionState,
+      session: {
+        ...sessionState.session,
+        playbackClientSequence: sessionState.session.playbackClientSequence + 1,
+      },
+    }))
+    .with({ kind: 'joined' }, (sessionState) => ({
+      ...sessionState,
+      session: {
+        ...sessionState.session,
+        playbackClientSequence: sessionState.session.playbackClientSequence + 1,
+      },
+    }))
+    .exhaustive();
 }
 
 export function createSyncedBackgroundStore() {
@@ -226,13 +220,11 @@ export function createSyncedBackgroundStore() {
       }),
       updateSessionRoom: (state, event: { room: PartySnapshot }) =>
         updateSessionRoom(state, event.room),
-      updatePersistedSession: (state, event: { session: SessionInfo | null }) => ({
+      advancePlaybackClientSequence: (state) => ({
         ...state,
-        sessionState: updateSessionFromPersistedSession(state, event.session),
-        lastError: event.session ? state.lastError : null,
-        lastWarning: event.session ? state.lastWarning : null,
+        sessionState: advancePlaybackClientSequence(state),
       }),
-      setLastError: (state, event: { message: string | null }) => ({
+      reportError: (state, event: { message: string }) => ({
         ...state,
         lastError: event.message,
       }),

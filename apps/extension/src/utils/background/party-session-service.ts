@@ -44,7 +44,7 @@ export class PartySessionService {
   registerEventHandlers(): void {
     this.bus.on('controlled-tab:playback-update', ({ update }) => {
       void this.sendPlaybackUpdate(update, true).catch((error) => {
-        this.store.trigger.setLastError({ message: getErrorMessage(error) });
+        this.store.trigger.reportError({ message: getErrorMessage(error) });
       });
     });
   }
@@ -139,7 +139,7 @@ export class PartySessionService {
 
     const stampedUpdate = {
       ...update,
-      clientSequence: await this.incrementPlaybackClientSequence(session),
+      clientSequence: await this.incrementPlaybackClientSequence(),
     };
     const snapshot = await this.emitPlaybackUpdate(stampedUpdate);
     this.applyPlaybackSnapshot(snapshot);
@@ -236,7 +236,7 @@ export class PartySessionService {
           : 0,
     };
     this.store.trigger.setJoinedSession({ session: nextSession, room: response.snapshot });
-    await this.settingsStore.persistSession(nextSession);
+    await this.settingsStore.persist();
   }
 
   private async emitRoomCreate(payload: CreateRoomRequest): Promise<RoomResponse> {
@@ -293,15 +293,15 @@ export class PartySessionService {
     this.connection = null;
   }
 
-  private async incrementPlaybackClientSequence(
-    session: NonNullable<ReturnType<typeof selectSession>>,
-  ): Promise<number> {
-    const nextClientSequence = session.playbackClientSequence + 1;
-    await this.settingsStore.persistSession({
-      ...session,
-      playbackClientSequence: nextClientSequence,
-    });
-    return nextClientSequence;
+  private async incrementPlaybackClientSequence(): Promise<number> {
+    this.store.trigger.advancePlaybackClientSequence();
+    const session = selectSession(this.state);
+    if (!session) {
+      throw new Error('Join or create a room first.');
+    }
+
+    await this.settingsStore.persist();
+    return session.playbackClientSequence;
   }
 
   private unwrapAckResponse<T>(response: OperationResult<T>): T {

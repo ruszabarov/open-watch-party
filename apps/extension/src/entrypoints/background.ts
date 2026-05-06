@@ -30,7 +30,7 @@ async function runPopupAction(store: BackgroundStore, action: () => Promise<void
   try {
     await action();
   } catch (error) {
-    store.trigger.setLastError({ message: getErrorMessage(error) });
+    store.trigger.reportError({ message: getErrorMessage(error) });
   }
 }
 
