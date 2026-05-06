@@ -10,6 +10,7 @@
     "build:firefox": "wxt build -b firefox",
     "build:safari": "wxt build -b safari",
     "zip": "wxt zip",
+    "test": "vitest run",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "release": "cd ../.. && release-it --config .release-it.extension.json"
   },

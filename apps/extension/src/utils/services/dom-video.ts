@@ -3,11 +3,13 @@ import { defineContentScript } from 'wxt/utils/define-content-script';
 
 import type { ApplySnapshotResult, WatchPageContext } from '../protocol/extension';
 import { onMessage, sendMessage } from '../protocol/messaging';
-import type { PlaybackApplyContext, ServicePlugin } from './types';
+import type { PlaybackApplyContext, PlaybackStatus, ServicePlugin } from './types';
 
 const VIDEO_EVENTS = ['play', 'pause', 'seeked', 'loadedmetadata', 'ended'] as const;
 const SEEK_THRESHOLD_SEC = 1.5;
 const APPLIED_SNAPSHOT_EVENT_SUPPRESSION_MS = 750;
+
+const SYNCABLE_PLAYBACK_STATUS: PlaybackStatus = { syncable: true };
 
 async function applyHtml5Playback({
   video,
@@ -43,9 +45,16 @@ export function runServiceContentScript(serviceId: ServiceId, plugin: ServicePlu
     main() {
       let activeVideo: HTMLVideoElement | null = null;
       let lastContextKey: string | null = null;
+      let playbackStatusTarget: Element | null = null;
+      let playbackWasBlocked = false;
       let suppressPlaybackEventsUntil = 0;
       let refreshFrame: number | null = null;
       let stopped = false;
+
+      const getPlaybackStatus = (): PlaybackStatus | null => {
+        if (!activeVideo) return null;
+        return plugin.getPlaybackStatus?.(activeVideo) ?? SYNCABLE_PLAYBACK_STATUS;
+      };
 
       const readContext = (): WatchPageContext | null => {
         const mediaId = plugin.extractMediaId(new URL(window.location.href));
@@ -61,6 +70,7 @@ export function runServiceContentScript(serviceId: ServiceId, plugin: ServicePlu
       const readPlayback = (): PlaybackUpdateDraft | null => {
         const mediaId = plugin.extractMediaId(new URL(window.location.href));
         if (!activeVideo || mediaId === null) return null;
+        if (getPlaybackStatus()?.syncable === false) return null;
 
         return {
           serviceId,
@@ -71,11 +81,11 @@ export function runServiceContentScript(serviceId: ServiceId, plugin: ServicePlu
         };
       };
 
-      const sendContextIfChanged = () => {
+      const sendContextIfChanged = (options: { force?: boolean } = {}) => {
         const context = readContext();
         const key = context ? `${context.serviceId}::${context.mediaId}` : null;
 
-        if (key === lastContextKey) return;
+        if (!options.force && key === lastContextKey) return;
         lastContextKey = key;
 
         void sendMessage('content:context', context).catch(() => undefined);
@@ -97,6 +107,17 @@ export function runServiceContentScript(serviceId: ServiceId, plugin: ServicePlu
         sendPlaybackUpdate();
       };
 
+      const scheduleRefresh = () => {
+        if (stopped || refreshFrame !== null) return;
+        refreshFrame = window.requestAnimationFrame(() => {
+          refreshFrame = null;
+          refresh();
+        });
+      };
+
+      const pageObserver = new MutationObserver(scheduleRefresh);
+      const playbackStatusObserver = new MutationObserver(scheduleRefresh);
+
       const bindVideo = () => {
         const video = plugin.getVideo();
         if (video === activeVideo) return;
@@ -112,21 +133,39 @@ export function runServiceContentScript(serviceId: ServiceId, plugin: ServicePlu
         }
       };
 
+      const bindPlaybackStatusTarget = () => {
+        const target = activeVideo ? (plugin.getPlaybackStatusTarget?.(activeVideo) ?? null) : null;
+        if (target === playbackStatusTarget) return;
+
+        playbackStatusObserver.disconnect();
+        playbackStatusTarget = target;
+
+        if (playbackStatusTarget) {
+          playbackStatusObserver.observe(playbackStatusTarget, {
+            attributes: true,
+            attributeFilter: ['class'],
+          });
+        }
+      };
+
       function refresh() {
         if (stopped) return;
         bindVideo();
+        bindPlaybackStatusTarget();
+
+        const playbackBlocked = getPlaybackStatus()?.syncable === false;
+        const playbackJustUnblocked = playbackWasBlocked && !playbackBlocked;
+        playbackWasBlocked = playbackBlocked;
+
+        if (playbackJustUnblocked) {
+          suppressPlaybackEventsUntil = performance.now() + APPLIED_SNAPSHOT_EVENT_SUPPRESSION_MS;
+          sendContextIfChanged({ force: true });
+          return;
+        }
+
         sendContextIfChanged();
       }
 
-      const scheduleRefresh = () => {
-        if (stopped || refreshFrame !== null) return;
-        refreshFrame = window.requestAnimationFrame(() => {
-          refreshFrame = null;
-          refresh();
-        });
-      };
-
-      const pageObserver = new MutationObserver(scheduleRefresh);
       pageObserver.observe(document.documentElement, { childList: true, subtree: true });
 
       const navigation = window.navigation;
@@ -142,6 +181,11 @@ export function runServiceContentScript(serviceId: ServiceId, plugin: ServicePlu
         onMessage('party:apply-snapshot', async ({ data }) => {
           if (!activeVideo || !readContext()) {
             return { applied: false, reason: plugin.playerNotReadyMessage };
+          }
+
+          const playbackStatus = getPlaybackStatus();
+          if (playbackStatus?.syncable === false) {
+            return { applied: false, reason: playbackStatus.reason };
           }
 
           suppressPlaybackEventsUntil = performance.now() + APPLIED_SNAPSHOT_EVENT_SUPPRESSION_MS;
@@ -169,6 +213,7 @@ export function runServiceContentScript(serviceId: ServiceId, plugin: ServicePlu
         () => {
           stopped = true;
           pageObserver.disconnect();
+          playbackStatusObserver.disconnect();
           navigation?.removeEventListener('navigatesuccess', scheduleRefresh);
           window.removeEventListener('popstate', scheduleRefresh);
 

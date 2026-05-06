@@ -1,6 +1,8 @@
 import type { PartySnapshot, ServiceDefinition } from '@open-watch-party/shared';
 import type { ApplySnapshotResult } from '../protocol/extension';
 
+export type PlaybackStatus = { syncable: true } | { syncable: false; reason: string };
+
 export interface PlaybackApplyContext {
   video: HTMLVideoElement;
   snapshot: PartySnapshot;
@@ -14,5 +16,7 @@ export type ServicePlugin = ServiceDefinition & {
   readonly playerNotReadyMessage: string;
   getVideo(): HTMLVideoElement | null;
   getMediaTitle(): string;
+  getPlaybackStatus?(video: HTMLVideoElement): PlaybackStatus;
+  getPlaybackStatusTarget?(video: HTMLVideoElement): Element | null;
   applyPlayback?(context: PlaybackApplyContext): Promise<ApplySnapshotResult>;
 };
