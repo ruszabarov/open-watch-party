@@ -14,7 +14,6 @@ import type { ApplySnapshotResult, WatchPageContext } from './extension';
 export interface ExtensionProtocolMap {
   'content:context': (payload: WatchPageContext | null) => void;
   'content:playback-update': (payload: PlaybackUpdateDraft) => void;
-  'content:request-sync': () => void;
   'party:request-context': () => WatchPageContext | null;
   'party:request-playback': () => PlaybackUpdateDraft | null;
   'party:apply-snapshot': (payload: { snapshot: PartySnapshot }) => ApplySnapshotResult;

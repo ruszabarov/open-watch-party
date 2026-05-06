@@ -68,38 +68,30 @@ export class ControlledTabService {
     });
   }
 
-  recordContentContext(tabId: number, context: WatchPageContext | null): void {
-    if (this.state.controlledTab?.tabId !== tabId) {
+  async handleContentContext(tabId: number, context: WatchPageContext | null): Promise<void> {
+    const room = selectRoom(this.state);
+    if (!room || !context) {
       return;
     }
 
-    if (!context) {
-      this.store.trigger.clearControlledTab();
+    const controlledTab = this.state.controlledTab;
+    if (!controlledTab) {
+      await this.adoptTabForRoom(tabId, context, room);
+      return;
+    }
+
+    if (controlledTab.tabId !== tabId) {
       return;
     }
 
     this.store.trigger.setControlledTab({ tabId, context });
-  }
 
-  relayControlledPlaybackUpdate(tabId: number, update: PlaybackUpdateDraft): void {
-    if (tabId !== this.state.controlledTab?.tabId) {
-      return;
-    }
-
-    this.bus.emit('controlled-tab:playback-update', { update });
-  }
-
-  async requestSync(tabId: number): Promise<void> {
-    const room = selectRoom(this.state);
-    if (!room) {
-      return;
-    }
-
-    if (!this.state.controlledTab) {
-      const context = await this.requestContextFromTab(tabId);
-      if (context) {
-        await this.adoptTabForRoom(tabId, context, room);
-      }
+    if (
+      context.serviceId === room.serviceId &&
+      controlledTab.context.mediaId !== context.mediaId &&
+      room.playback.mediaId !== context.mediaId
+    ) {
+      this.bus.emit('controlled-tab:media-switch', { context });
       return;
     }
 
@@ -160,6 +152,14 @@ export class ControlledTabService {
     } catch (error) {
       throw new Error('Could not open the room video in the current tab.', { cause: error });
     }
+  }
+
+  relayControlledPlaybackUpdate(tabId: number, update: PlaybackUpdateDraft): void {
+    if (tabId !== this.state.controlledTab?.tabId) {
+      return;
+    }
+
+    this.bus.emit('controlled-tab:playback-update', { update });
   }
 
   async requireControllableWatchTab(tabId: number): Promise<ControllableWatchTabState> {

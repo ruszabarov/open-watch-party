@@ -84,21 +84,15 @@ async function joinRoomFromTab(
 }
 
 function registerContentHandlers(controlledTabService: ControlledTabService): void {
-  onMessage('content:context', ({ data, sender }) => {
+  onMessage('content:context', async ({ data, sender }) => {
     if (sender.tab?.id != null) {
-      controlledTabService.recordContentContext(sender.tab.id, data);
+      await controlledTabService.handleContentContext(sender.tab.id, data);
     }
   });
 
   onMessage('content:playback-update', ({ data, sender }) => {
     if (sender.tab?.id != null) {
       controlledTabService.relayControlledPlaybackUpdate(sender.tab.id, data);
-    }
-  });
-
-  onMessage('content:request-sync', async ({ sender }) => {
-    if (sender.tab?.id != null) {
-      await controlledTabService.requestSync(sender.tab.id);
     }
   });
 }

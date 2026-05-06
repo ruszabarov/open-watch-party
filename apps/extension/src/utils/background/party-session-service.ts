@@ -22,7 +22,7 @@ import { getErrorMessage } from '$lib/errors.js';
 import type { WatchPageContext } from '../protocol/extension';
 import type { BackgroundBus } from './bus';
 import { RealtimeConnection } from './realtime-connection';
-import { selectSession, type BackgroundState, type BackgroundStore } from './state';
+import { selectRoom, selectSession, type BackgroundState, type BackgroundStore } from './state';
 import type { SettingsStore } from './settings-store';
 
 const ACTIVE_ROOM_EXISTS_ERROR = 'Leave your current room before joining or creating another room.';
@@ -44,6 +44,12 @@ export class PartySessionService {
   registerEventHandlers(): void {
     this.bus.on('controlled-tab:playback-update', ({ update }) => {
       void this.sendPlaybackUpdate(update, true).catch((error) => {
+        this.store.trigger.reportError({ message: getErrorMessage(error) });
+      });
+    });
+
+    this.bus.on('controlled-tab:media-switch', ({ context }) => {
+      void this.sendMediaSwitchUpdate(context).catch((error) => {
         this.store.trigger.reportError({ message: getErrorMessage(error) });
       });
     });
@@ -130,9 +136,12 @@ export class PartySessionService {
     }
 
     const playbackContext = this.state.controlledTab?.context ?? null;
-    if (playbackContext && playbackContext.mediaId !== update.mediaId) {
+    if (
+      playbackContext &&
+      (playbackContext.serviceId !== update.serviceId || playbackContext.mediaId !== update.mediaId)
+    ) {
       this.store.trigger.setLastWarning({
-        message: 'Local title no longer matches the active room.',
+        message: 'Local media no longer matches the active room.',
       });
       return;
     }
@@ -219,6 +228,36 @@ export class PartySessionService {
     } catch (error) {
       this.store.trigger.setSessionError({ message: getErrorMessage(error) });
     }
+  }
+
+  private async sendMediaSwitchUpdate(context: WatchPageContext): Promise<void> {
+    const session = selectSession(this.state);
+    if (!session) {
+      return;
+    }
+
+    if (context.serviceId !== session.serviceId) {
+      this.store.trigger.setLastWarning({
+        message: 'Rooms can only switch media within the original service.',
+      });
+      return;
+    }
+
+    const room = selectRoom(this.state);
+    if (room?.playback.mediaId === context.mediaId) {
+      return;
+    }
+
+    await this.sendPlaybackUpdate(
+      {
+        serviceId: context.serviceId,
+        mediaId: context.mediaId,
+        title: context.title ?? '',
+        positionSec: 0,
+        playing: false,
+      },
+      true,
+    );
   }
 
   private async applyRoomResponse(response: RoomResponse): Promise<void> {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { OperationResult, RoomResponse } from '@open-watch-party/shared';
+import type { OperationResult, PartySnapshot, RoomResponse } from '@open-watch-party/shared';
 import { MAX_TITLE_LENGTH } from '@open-watch-party/shared';
 
 import { RealtimeSocketService } from '../src/socket';
@@ -274,6 +274,80 @@ describe('socket handlers', () => {
     expect(response).toEqual({
       ok: false,
       error: 'Invalid media id for service.',
+    });
+    expect(io.emitted).toHaveLength(0);
+    expect(socket.emitted).toHaveLength(0);
+  });
+
+  it('broadcasts playback state when a member switches to same-service media', () => {
+    const { service } = createServiceContext();
+    const hostSocket = connectSocket(service, 'socket-host');
+    const guestSocket = connectSocket(service, 'socket-guest');
+    const room = createRoom(hostSocket);
+    expect(joinRoom(guestSocket, room.snapshot.roomCode)).toMatchObject({ ok: true });
+    hostSocket.emitted.length = 0;
+
+    let response: OperationResult<PartySnapshot> | null = null;
+    getHandler<PartySnapshot>(hostSocket, 'playback:update')(
+      {
+        ...validPlaybackUpdatePayload,
+        mediaId: 'next456',
+        title: 'Next clip',
+        positionSec: 0,
+        playing: false,
+        clientSequence: 2,
+      },
+      (value) => {
+        response = value;
+      },
+    );
+
+    expect(response).toMatchObject({
+      ok: true,
+      data: {
+        watchUrl: 'https://www.youtube.com/watch?v=next456',
+        playback: {
+          serviceId: 'youtube',
+          mediaId: 'next456',
+          title: 'Next clip',
+          positionSec: 0,
+          playing: false,
+        },
+      },
+    });
+    expect(hostSocket.emitted).toHaveLength(1);
+    expect(hostSocket.emitted[0]).toMatchObject({
+      room: room.snapshot.roomCode,
+      event: 'playback:state',
+      payload: {
+        watchUrl: 'https://www.youtube.com/watch?v=next456',
+        playback: {
+          mediaId: 'next456',
+        },
+      },
+    });
+  });
+
+  it('rejects playback updates that switch the room service', () => {
+    const { io, service } = createServiceContext();
+    const socket = connectSocket(service, 'socket-1');
+    createRoom(socket);
+
+    let response: OperationResult<unknown> | null = null;
+    getHandler<unknown>(socket, 'playback:update')(
+      {
+        ...validPlaybackUpdatePayload,
+        serviceId: 'netflix',
+        mediaId: '123456',
+      },
+      (value) => {
+        response = value;
+      },
+    );
+
+    expect(response).toEqual({
+      ok: false,
+      error: 'Service mismatch.',
     });
     expect(io.emitted).toHaveLength(0);
     expect(socket.emitted).toHaveLength(0);

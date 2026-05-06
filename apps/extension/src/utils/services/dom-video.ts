@@ -54,6 +54,7 @@ export function runServiceContentScript(serviceId: ServiceId, plugin: ServicePlu
         return {
           serviceId,
           mediaId,
+          title: plugin.getMediaTitle() || undefined,
         };
       };
 
@@ -78,9 +79,6 @@ export function runServiceContentScript(serviceId: ServiceId, plugin: ServicePlu
         lastContextKey = key;
 
         void sendMessage('content:context', context).catch(() => undefined);
-        if (context) {
-          void sendMessage('content:request-sync').catch(() => undefined);
-        }
       };
 
       const sendPlaybackUpdate = () => {
