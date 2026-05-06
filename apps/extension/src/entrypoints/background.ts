@@ -2,7 +2,6 @@ import { defineBackground } from 'wxt/utils/define-background';
 
 import { getErrorMessage } from '$lib/errors.js';
 import { onMessage } from '../utils/protocol/messaging';
-import { createBackgroundBus } from '../utils/background/bus';
 import { PartySessionService } from '../utils/background/party-session-service';
 import { SettingsStore } from '../utils/background/settings-store';
 import { createSyncedBackgroundStore, type BackgroundStore } from '../utils/background/state';
@@ -10,15 +9,20 @@ import { ControlledTabService } from '../utils/background/controlled-tab-service
 
 export default defineBackground(() => {
   const store = createSyncedBackgroundStore();
-  const bus = createBackgroundBus();
   const settingsStore = new SettingsStore(store);
-  const controlledTabService = new ControlledTabService(store, bus);
-  const partySessionService = new PartySessionService(store, bus, settingsStore);
+  const partySessionService = new PartySessionService(store, settingsStore);
+  const controlledTabService = new ControlledTabService(store, {
+    relayPlaybackUpdate: (update) => partySessionService.relayControlledPlaybackUpdate(update),
+    relayMediaSwitch: (context) => partySessionService.relayControlledMediaSwitch(context),
+  });
+
+  partySessionService.setSnapshotUpdatedHandler(() => {
+    void controlledTabService.applySnapshotToControlledTab().catch(() => undefined);
+  });
 
   registerContentHandlers(controlledTabService);
   registerPopupHandlers(store, settingsStore, controlledTabService, partySessionService);
   controlledTabService.registerEventHandlers();
-  partySessionService.registerEventHandlers();
 
   void (async () => {
     await settingsStore.hydrate();

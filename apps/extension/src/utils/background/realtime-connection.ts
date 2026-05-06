@@ -77,28 +77,19 @@ export class RealtimeConnection {
     return emitter.emitWithAck(event, payload);
   }
 
-  on(event: 'room:state', handler: ServerToClientEvents['room:state']): () => void;
-  on(event: 'playback:state', handler: ServerToClientEvents['playback:state']): () => void;
-  on(event: keyof ServerToClientEvents, handler: (snapshot: PartySnapshot) => void): () => void {
+  on(event: 'room:state', handler: ServerToClientEvents['room:state']): void;
+  on(event: 'playback:state', handler: ServerToClientEvents['playback:state']): void;
+  on(event: keyof ServerToClientEvents, handler: (snapshot: PartySnapshot) => void): void {
     this.socket.on(event, handler);
-    return () => {
-      this.socket.off(event, handler);
-    };
   }
 
-  onReconnect(handler: () => void | Promise<void>): () => void {
+  onReconnect(handler: () => void | Promise<void>): void {
     this.reconnectHandlers.add(handler);
-    return () => {
-      this.reconnectHandlers.delete(handler);
-    };
   }
 
-  onStatusChange(handler: (status: ConnectionStatus, errorMessage?: string) => void): () => void {
+  onStatusChange(handler: (status: ConnectionStatus, errorMessage?: string) => void): void {
     handler(this.currentStatus, this.currentErrorMessage);
     this.statusChangeHandlers.add(handler);
-    return () => {
-      this.statusChangeHandlers.delete(handler);
-    };
   }
 
   disconnect(): void {

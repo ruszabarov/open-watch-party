@@ -20,7 +20,6 @@ import type {
 
 import { getErrorMessage } from '$lib/errors.js';
 import type { WatchPageContext } from '../protocol/extension';
-import type { BackgroundBus } from './bus';
 import { RealtimeConnection } from './realtime-connection';
 import { selectRoom, selectSession, type BackgroundState, type BackgroundStore } from './state';
 import type { SettingsStore } from './settings-store';
@@ -30,10 +29,10 @@ const SERVER_URL = __DEFAULT_SERVER_URL__;
 
 export class PartySessionService {
   private connection: RealtimeConnection | null = null;
+  private snapshotUpdatedHandler: (() => void) | null = null;
 
   constructor(
     private readonly store: BackgroundStore,
-    private readonly bus: BackgroundBus,
     private readonly settingsStore: SettingsStore,
   ) {}
 
@@ -41,17 +40,19 @@ export class PartySessionService {
     return this.store.getSnapshot().context;
   }
 
-  registerEventHandlers(): void {
-    this.bus.on('controlled-tab:playback-update', ({ update }) => {
-      void this.sendPlaybackUpdate(update, true).catch((error) => {
-        this.store.trigger.reportError({ message: getErrorMessage(error) });
-      });
-    });
+  setSnapshotUpdatedHandler(handler: () => void): void {
+    this.snapshotUpdatedHandler = handler;
+  }
 
-    this.bus.on('controlled-tab:media-switch', ({ context }) => {
-      void this.sendMediaSwitchUpdate(context).catch((error) => {
-        this.store.trigger.reportError({ message: getErrorMessage(error) });
-      });
+  relayControlledPlaybackUpdate(update: PlaybackUpdateDraft): void {
+    void this.sendPlaybackUpdate(update).catch((error) => {
+      this.store.trigger.reportError({ message: getErrorMessage(error) });
+    });
+  }
+
+  relayControlledMediaSwitch(context: WatchPageContext): void {
+    void this.sendMediaSwitchUpdate(context).catch((error) => {
+      this.store.trigger.reportError({ message: getErrorMessage(error) });
     });
   }
 
@@ -97,7 +98,7 @@ export class PartySessionService {
 
     this.store.trigger.setControlledTab({ tabId, context });
     await this.applyRoomResponse(response);
-    this.bus.emit('session:snapshot-updated', undefined);
+    this.notifySnapshotUpdated();
   }
 
   async joinRoom(roomCode: string): Promise<RoomResponse> {
@@ -128,11 +129,10 @@ export class PartySessionService {
     await this.settingsStore.persist();
   }
 
-  async sendPlaybackUpdate(update: PlaybackUpdateDraft, isLocalRelay = false): Promise<void> {
+  private async sendPlaybackUpdate(update: PlaybackUpdateDraft): Promise<void> {
     const session = selectSession(this.state);
     if (!session) {
-      if (isLocalRelay) return;
-      throw new Error('Join or create a room first.');
+      return;
     }
 
     const playbackContext = this.state.controlledTab?.context ?? null;
@@ -151,7 +151,7 @@ export class PartySessionService {
       clientSequence: await this.incrementPlaybackClientSequence(),
     };
     const snapshot = await this.emitPlaybackUpdate(stampedUpdate);
-    this.applyPlaybackSnapshot(snapshot);
+    this.store.trigger.updateSessionRoom({ room: snapshot });
   }
 
   private ensureMemberId(): string {
@@ -200,13 +200,13 @@ export class PartySessionService {
       this.store.trigger.updateSessionRoom({ room: snapshot });
     });
 
-    connection.on('playback:state', async (snapshot) => {
+    connection.on('playback:state', (snapshot) => {
       if (this.connection !== connection) {
         return;
       }
 
       this.store.trigger.updateSessionRoom({ room: snapshot });
-      this.bus.emit('session:snapshot-updated', undefined);
+      this.notifySnapshotUpdated();
     });
   }
 
@@ -224,7 +224,7 @@ export class PartySessionService {
       });
 
       await this.applyRoomResponse(response);
-      this.bus.emit('session:snapshot-updated', undefined);
+      this.notifySnapshotUpdated();
     } catch (error) {
       this.store.trigger.setSessionError({ message: getErrorMessage(error) });
     }
@@ -248,16 +248,13 @@ export class PartySessionService {
       return;
     }
 
-    await this.sendPlaybackUpdate(
-      {
-        serviceId: context.serviceId,
-        mediaId: context.mediaId,
-        title: context.title ?? '',
-        positionSec: 0,
-        playing: false,
-      },
-      true,
-    );
+    await this.sendPlaybackUpdate({
+      serviceId: context.serviceId,
+      mediaId: context.mediaId,
+      title: context.title ?? '',
+      positionSec: 0,
+      playing: false,
+    });
   }
 
   private async applyRoomResponse(response: RoomResponse): Promise<void> {
@@ -314,8 +311,8 @@ export class PartySessionService {
     return this.unwrapAckResponse(response);
   }
 
-  private applyPlaybackSnapshot(snapshot: PartySnapshot): void {
-    this.store.trigger.updateSessionRoom({ room: snapshot });
+  private notifySnapshotUpdated(): void {
+    this.snapshotUpdatedHandler?.();
   }
 
   private async getConnection(): Promise<RealtimeConnection> {

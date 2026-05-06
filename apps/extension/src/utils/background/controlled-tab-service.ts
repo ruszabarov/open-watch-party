@@ -4,7 +4,11 @@ import type { ApplySnapshotResult, WatchPageContext } from '../protocol/extensio
 import { sendMessage } from '../protocol/messaging';
 import { getPlugin } from '../services/plugins';
 import { selectRoom, selectSession, type BackgroundState, type BackgroundStore } from './state';
-import type { BackgroundBus } from './bus';
+
+interface ControlledTabActions {
+  relayPlaybackUpdate(update: PlaybackUpdateDraft): void;
+  relayMediaSwitch(context: WatchPageContext): void;
+}
 
 interface ControllableWatchTabState {
   context: WatchPageContext;
@@ -29,7 +33,7 @@ function roomMatchesContext(
 export class ControlledTabService {
   constructor(
     private readonly store: BackgroundStore,
-    private readonly bus: BackgroundBus,
+    private readonly actions: ControlledTabActions,
   ) {}
 
   private get state(): BackgroundState {
@@ -37,10 +41,6 @@ export class ControlledTabService {
   }
 
   registerEventHandlers(): void {
-    this.bus.on('session:snapshot-updated', () => {
-      void this.applySnapshotToControlledTab().catch(() => undefined);
-    });
-
     browser.tabs.onUpdated.addListener((tabId, _changeInfo, tab) => {
       const controlledTab = this.state.controlledTab;
       if (tabId === controlledTab?.tabId && tab.url) {
@@ -91,7 +91,7 @@ export class ControlledTabService {
       controlledTab.context.mediaId !== context.mediaId &&
       room.playback.mediaId !== context.mediaId
     ) {
-      this.bus.emit('controlled-tab:media-switch', { context });
+      this.actions.relayMediaSwitch(context);
       return;
     }
 
@@ -159,7 +159,7 @@ export class ControlledTabService {
       return;
     }
 
-    this.bus.emit('controlled-tab:playback-update', { update });
+    this.actions.relayPlaybackUpdate(update);
   }
 
   async requireControllableWatchTab(tabId: number): Promise<ControllableWatchTabState> {
