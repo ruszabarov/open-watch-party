@@ -18,7 +18,7 @@
 </script>
 
 <Alert.Root
-  class={['items-start gap-x-2 px-3 py-3', alertTones[kind]]}
+  class={['flex items-start gap-2 px-3 py-3', alertTones[kind]]}
   role={kind === 'error' ? 'alert' : 'status'}
 >
   <span class="inline-flex shrink-0 pt-0.5" aria-hidden="true">
