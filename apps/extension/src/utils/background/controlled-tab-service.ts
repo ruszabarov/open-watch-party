@@ -86,7 +86,7 @@ export class ControlledTabService {
 
     if (!this.state.controlledTab) {
       const context = await this.requestContextFromTab(tabId);
-      if (context?.serviceId === room.serviceId && context.mediaId === room.playback.mediaId) {
+      if (context?.serviceId === room.serviceId) {
         this.store.trigger.setControlledTab({ tabId, context });
       }
     }

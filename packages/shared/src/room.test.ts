@@ -210,6 +210,27 @@ describe('room reducer', () => {
       service: expect.any(Object),
       isWatchPage: true,
     });
+    expect(
+      findServiceDefinitionByUrl(
+        new URL('https://www.netflix.com/watch/123456?trackId=255824129&tctx=0%2C0'),
+      ),
+    ).toEqual({
+      serviceId: 'netflix',
+      service: expect.any(Object),
+      isWatchPage: true,
+    });
+    expect(findServiceDefinitionByUrl(new URL('https://www.netflix.com/watch/123456/'))).toEqual({
+      serviceId: 'netflix',
+      service: expect.any(Object),
+      isWatchPage: true,
+    });
+    expect(
+      findServiceDefinitionByUrl(new URL('https://www.netflix.com/watch/123456#metadata')),
+    ).toEqual({
+      serviceId: 'netflix',
+      service: expect.any(Object),
+      isWatchPage: true,
+    });
     expect(findServiceDefinitionByUrl(new URL('https://www.youtube.com/watch?v=abc123'))).toEqual({
       serviceId: 'youtube',
       service: expect.any(Object),
@@ -247,6 +268,11 @@ describe('room reducer', () => {
     });
     expect(findServiceDefinitionByUrl(new URL('https://www.youtube.com/watch?v='))).toEqual({
       serviceId: 'youtube',
+      service: expect.any(Object),
+      isWatchPage: false,
+    });
+    expect(findServiceDefinitionByUrl(new URL('https://www.netflix.com/watch/123456abc'))).toEqual({
+      serviceId: 'netflix',
       service: expect.any(Object),
       isWatchPage: false,
     });

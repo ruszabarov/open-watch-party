@@ -4,7 +4,7 @@ import { isSafeMediaId } from '../utils';
 const NETFLIX_HOST_RE = /(^|\.)netflix\.com$/;
 
 function extractNetflixMediaId(url: URL): string | null {
-  return url.pathname.match(/^\/watch\/(\d+)/)?.[1] ?? null;
+  return url.pathname.match(/^\/watch\/(\d+)\/?$/)?.[1] ?? null;
 }
 
 export const NETFLIX_DEFINITION = {
