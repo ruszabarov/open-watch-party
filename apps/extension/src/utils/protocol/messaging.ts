@@ -1,11 +1,4 @@
-import {
-  defineExtensionMessaging,
-  type ExtensionMessage,
-  type GetReturnType,
-  type MaybePromise,
-  type Message,
-  type RemoveListenerCallback,
-} from '@webext-core/messaging';
+import { defineExtensionMessaging } from '@webext-core/messaging';
 
 import type { PartySnapshot, PlaybackUpdateDraft } from '@open-watch-party/shared';
 
@@ -23,21 +16,4 @@ export interface ExtensionProtocolMap {
   'popup:update-settings': (payload: { memberName: string }) => void;
 }
 
-export const extensionMessaging = defineExtensionMessaging<ExtensionProtocolMap>();
-const { onMessage: rawOnMessage, sendMessage: rawSendMessage } = extensionMessaging;
-export const sendMessage = rawSendMessage;
-
-type ExtensionMessageFor<TType extends keyof ExtensionProtocolMap> = Message<
-  ExtensionProtocolMap,
-  TType
-> &
-  ExtensionMessage;
-
-export function onMessage<TType extends keyof ExtensionProtocolMap>(
-  type: TType,
-  handler: (
-    message: ExtensionMessageFor<TType>,
-  ) => MaybePromise<GetReturnType<ExtensionProtocolMap[TType]>>,
-): RemoveListenerCallback {
-  return rawOnMessage(type, handler);
-}
+export const { onMessage, sendMessage } = defineExtensionMessaging<ExtensionProtocolMap>();

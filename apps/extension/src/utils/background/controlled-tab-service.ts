@@ -5,15 +5,15 @@ import { sendMessage } from '../protocol/messaging';
 import { getPlugin } from '../services/plugins';
 import { selectRoom, selectSession, type BackgroundState, type BackgroundStore } from './state';
 
-interface ControlledTabActions {
-  relayPlaybackUpdate(update: PlaybackUpdateDraft): void;
-  relayMediaSwitch(context: WatchPageContext): void;
-}
-
 interface ControllableWatchTabState {
   context: WatchPageContext;
   playback: PlaybackUpdateDraft;
 }
+
+export type ControlledTabEvent = {
+  type: 'media-switch-requested';
+  context: WatchPageContext;
+};
 
 function isPluginUrl(plugin: { matchesUrl(url: URL): boolean }, rawUrl: string): boolean {
   return URL.canParse(rawUrl) && plugin.matchesUrl(new URL(rawUrl));
@@ -31,10 +31,7 @@ function roomMatchesContext(
 }
 
 export class ControlledTabService {
-  constructor(
-    private readonly store: BackgroundStore,
-    private readonly actions: ControlledTabActions,
-  ) {}
+  constructor(private readonly store: BackgroundStore) {}
 
   private get state(): BackgroundState {
     return this.store.getSnapshot().context;
@@ -68,20 +65,23 @@ export class ControlledTabService {
     });
   }
 
-  async handleContentContext(tabId: number, context: WatchPageContext | null): Promise<void> {
+  async handleContentContext(
+    tabId: number,
+    context: WatchPageContext | null,
+  ): Promise<ControlledTabEvent | null> {
     const room = selectRoom(this.state);
     if (!room || !context) {
-      return;
+      return null;
     }
 
     const controlledTab = this.state.controlledTab;
     if (!controlledTab) {
       await this.adoptTabForRoom(tabId, context, room);
-      return;
+      return null;
     }
 
     if (controlledTab.tabId !== tabId) {
-      return;
+      return null;
     }
 
     this.store.trigger.setControlledTab({ tabId, context });
@@ -91,11 +91,11 @@ export class ControlledTabService {
       controlledTab.context.mediaId !== context.mediaId &&
       room.playback.mediaId !== context.mediaId
     ) {
-      this.actions.relayMediaSwitch(context);
-      return;
+      return { type: 'media-switch-requested', context };
     }
 
     await this.applySnapshotToControlledTab();
+    return null;
   }
 
   async applySnapshotToControlledTab(): Promise<void> {
@@ -112,9 +112,7 @@ export class ControlledTabService {
       controlledTab.context.serviceId !== room.serviceId ||
       controlledTab.context.mediaId !== room.playback.mediaId
     ) {
-      await this.navigateControlledTabToRoom(controlledTab.tabId, room.watchUrl, {
-        active: false,
-      });
+      await this.navigateControlledTabToRoom(controlledTab.tabId, room.watchUrl, false);
       return;
     }
 
@@ -137,7 +135,7 @@ export class ControlledTabService {
   async navigateControlledTabToRoom(
     tabId: number,
     watchUrl: string,
-    options: { active?: boolean } = {},
+    active = true,
   ): Promise<void> {
     if (this.state.controlledTab?.tabId === tabId) {
       this.store.trigger.clearControlledTab();
@@ -147,19 +145,15 @@ export class ControlledTabService {
     try {
       await browser.tabs.update(tabId, {
         url: watchUrl,
-        ...(options.active === undefined ? { active: true } : { active: options.active }),
+        active,
       });
     } catch (error) {
       throw new Error('Could not open the room video in the current tab.', { cause: error });
     }
   }
 
-  relayControlledPlaybackUpdate(tabId: number, update: PlaybackUpdateDraft): void {
-    if (tabId !== this.state.controlledTab?.tabId) {
-      return;
-    }
-
-    this.actions.relayPlaybackUpdate(update);
+  isControlledTab(tabId: number): boolean {
+    return tabId === this.state.controlledTab?.tabId;
   }
 
   async requireControllableWatchTab(tabId: number): Promise<ControllableWatchTabState> {

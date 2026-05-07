@@ -10,17 +10,14 @@ import { ControlledTabService } from '../utils/background/controlled-tab-service
 export default defineBackground(() => {
   const store = createSyncedBackgroundStore();
   const settingsStore = new SettingsStore(store);
-  const partySessionService = new PartySessionService(store, settingsStore);
-  const controlledTabService = new ControlledTabService(store, {
-    relayPlaybackUpdate: (update) => partySessionService.relayControlledPlaybackUpdate(update),
-    relayMediaSwitch: (context) => partySessionService.relayControlledMediaSwitch(context),
+  const controlledTabService = new ControlledTabService(store);
+  const partySessionService = new PartySessionService(store, settingsStore, {
+    onRoomSnapshotChanged: () => {
+      applyRoomSnapshotToControlledTab(store, controlledTabService);
+    },
   });
 
-  partySessionService.setSnapshotUpdatedHandler(() => {
-    void controlledTabService.applySnapshotToControlledTab().catch(() => undefined);
-  });
-
-  registerContentHandlers(controlledTabService);
+  registerContentHandlers(controlledTabService, partySessionService);
   registerPopupHandlers(store, settingsStore, controlledTabService, partySessionService);
   controlledTabService.registerEventHandlers();
 
@@ -29,6 +26,15 @@ export default defineBackground(() => {
     await partySessionService.connectForStoredSession();
   })();
 });
+
+function applyRoomSnapshotToControlledTab(
+  store: BackgroundStore,
+  controlledTabService: ControlledTabService,
+): void {
+  void controlledTabService.applySnapshotToControlledTab().catch((error) => {
+    store.trigger.reportError({ message: getErrorMessage(error) });
+  });
+}
 
 async function runPopupAction(store: BackgroundStore, action: () => Promise<void>): Promise<void> {
   try {
@@ -87,16 +93,22 @@ async function joinRoomFromTab(
   }
 }
 
-function registerContentHandlers(controlledTabService: ControlledTabService): void {
+function registerContentHandlers(
+  controlledTabService: ControlledTabService,
+  partySessionService: PartySessionService,
+): void {
   onMessage('content:context', async ({ data, sender }) => {
     if (sender.tab?.id != null) {
-      await controlledTabService.handleContentContext(sender.tab.id, data);
+      const event = await controlledTabService.handleContentContext(sender.tab.id, data);
+      if (event?.type === 'media-switch-requested') {
+        partySessionService.updateRoomMediaFromControlledTab(event.context);
+      }
     }
   });
 
   onMessage('content:playback-update', ({ data, sender }) => {
-    if (sender.tab?.id != null) {
-      controlledTabService.relayControlledPlaybackUpdate(sender.tab.id, data);
+    if (sender.tab?.id != null && controlledTabService.isControlledTab(sender.tab.id)) {
+      partySessionService.updateRoomPlaybackFromControlledTab(data);
     }
   });
 }

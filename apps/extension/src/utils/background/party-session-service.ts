@@ -27,30 +27,30 @@ import type { SettingsStore } from './settings-store';
 const ACTIVE_ROOM_EXISTS_ERROR = 'Leave your current room before joining or creating another room.';
 const SERVER_URL = __DEFAULT_SERVER_URL__;
 
+interface PartySessionServiceOptions {
+  onRoomSnapshotChanged(): void;
+}
+
 export class PartySessionService {
   private connection: RealtimeConnection | null = null;
-  private snapshotUpdatedHandler: (() => void) | null = null;
 
   constructor(
     private readonly store: BackgroundStore,
     private readonly settingsStore: SettingsStore,
+    private readonly options: PartySessionServiceOptions,
   ) {}
 
   private get state(): BackgroundState {
     return this.store.getSnapshot().context;
   }
 
-  setSnapshotUpdatedHandler(handler: () => void): void {
-    this.snapshotUpdatedHandler = handler;
-  }
-
-  relayControlledPlaybackUpdate(update: PlaybackUpdateDraft): void {
+  updateRoomPlaybackFromControlledTab(update: PlaybackUpdateDraft): void {
     void this.sendPlaybackUpdate(update).catch((error) => {
       this.store.trigger.reportError({ message: getErrorMessage(error) });
     });
   }
 
-  relayControlledMediaSwitch(context: WatchPageContext): void {
+  updateRoomMediaFromControlledTab(context: WatchPageContext): void {
     void this.sendMediaSwitchUpdate(context).catch((error) => {
       this.store.trigger.reportError({ message: getErrorMessage(error) });
     });
@@ -98,7 +98,7 @@ export class PartySessionService {
 
     this.store.trigger.setControlledTab({ tabId, context });
     await this.applyRoomResponse(response);
-    this.notifySnapshotUpdated();
+    this.notifyRoomSnapshotChanged();
   }
 
   async joinRoom(roomCode: string): Promise<RoomResponse> {
@@ -206,7 +206,7 @@ export class PartySessionService {
       }
 
       this.store.trigger.updateSessionRoom({ room: snapshot });
-      this.notifySnapshotUpdated();
+      this.notifyRoomSnapshotChanged();
     });
   }
 
@@ -224,7 +224,7 @@ export class PartySessionService {
       });
 
       await this.applyRoomResponse(response);
-      this.notifySnapshotUpdated();
+      this.notifyRoomSnapshotChanged();
     } catch (error) {
       this.store.trigger.setSessionError({ message: getErrorMessage(error) });
     }
@@ -311,8 +311,8 @@ export class PartySessionService {
     return this.unwrapAckResponse(response);
   }
 
-  private notifySnapshotUpdated(): void {
-    this.snapshotUpdatedHandler?.();
+  private notifyRoomSnapshotChanged(): void {
+    this.options.onRoomSnapshotChanged();
   }
 
   private async getConnection(): Promise<RealtimeConnection> {
