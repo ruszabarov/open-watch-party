@@ -213,7 +213,11 @@ export function createSyncedBackgroundStore() {
       }),
       setJoinedSession: (
         state,
-        event: { session: SessionInfo; room: PartySnapshot; applySnapshotToControlledTab?: boolean },
+        event: {
+          session: SessionInfo;
+          room: PartySnapshot;
+          applySnapshotToControlledTab?: boolean;
+        },
         enqueue,
       ) => {
         if (event.applySnapshotToControlledTab) {

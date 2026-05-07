@@ -126,11 +126,7 @@ export class ControlledTabService {
     });
   }
 
-  async navigateControlledTabToRoom(
-    tabId: number,
-    watchUrl: string,
-    active = true,
-  ): Promise<void> {
+  async navigateControlledTabToRoom(tabId: number, watchUrl: string, active = true): Promise<void> {
     if (this.state.controlledTab?.tabId === tabId) {
       this.store.trigger.clearControlledTab();
     }
