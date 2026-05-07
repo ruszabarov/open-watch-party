@@ -10,11 +10,6 @@ interface ControllableWatchTabState {
   playback: PlaybackUpdateDraft;
 }
 
-export type ControlledTabEvent = {
-  type: 'media-switch-requested';
-  context: WatchPageContext;
-};
-
 function isPluginUrl(plugin: { matchesUrl(url: URL): boolean }, rawUrl: string): boolean {
   return URL.canParse(rawUrl) && plugin.matchesUrl(new URL(rawUrl));
 }
@@ -65,37 +60,36 @@ export class ControlledTabService {
     });
   }
 
-  async handleContentContext(
-    tabId: number,
-    context: WatchPageContext | null,
-  ): Promise<ControlledTabEvent | null> {
+  async handleContentContext(tabId: number, context: WatchPageContext | null): Promise<void> {
     const room = selectRoom(this.state);
     if (!room || !context) {
-      return null;
+      return;
     }
 
     const controlledTab = this.state.controlledTab;
     if (!controlledTab) {
       await this.adoptTabForRoom(tabId, context, room);
-      return null;
+      return;
     }
 
     if (controlledTab.tabId !== tabId) {
-      return null;
+      return;
     }
 
-    this.store.trigger.setControlledTab({ tabId, context });
-
-    if (
+    const shouldRequestMediaSwitch =
       context.serviceId === room.serviceId &&
       controlledTab.context.mediaId !== context.mediaId &&
-      room.playback.mediaId !== context.mediaId
-    ) {
-      return { type: 'media-switch-requested', context };
-    }
+      room.playback.mediaId !== context.mediaId;
 
-    await this.applySnapshotToControlledTab();
-    return null;
+    this.store.trigger.setControlledTab({
+      tabId,
+      context,
+      requestMediaSwitch: shouldRequestMediaSwitch,
+    });
+
+    if (!shouldRequestMediaSwitch) {
+      await this.applySnapshotToControlledTab();
+    }
   }
 
   async applySnapshotToControlledTab(): Promise<void> {

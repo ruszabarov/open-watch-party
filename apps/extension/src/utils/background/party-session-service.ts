@@ -27,17 +27,12 @@ import type { SettingsStore } from './settings-store';
 const ACTIVE_ROOM_EXISTS_ERROR = 'Leave your current room before joining or creating another room.';
 const SERVER_URL = __DEFAULT_SERVER_URL__;
 
-interface PartySessionServiceOptions {
-  onRoomSnapshotChanged(): void;
-}
-
 export class PartySessionService {
   private connection: RealtimeConnection | null = null;
 
   constructor(
     private readonly store: BackgroundStore,
     private readonly settingsStore: SettingsStore,
-    private readonly options: PartySessionServiceOptions,
   ) {}
 
   private get state(): BackgroundState {
@@ -97,8 +92,7 @@ export class PartySessionService {
     });
 
     this.store.trigger.setControlledTab({ tabId, context });
-    await this.applyRoomResponse(response);
-    this.notifyRoomSnapshotChanged();
+    await this.applyRoomResponse(response, true);
   }
 
   async joinRoom(roomCode: string): Promise<RoomResponse> {
@@ -205,8 +199,7 @@ export class PartySessionService {
         return;
       }
 
-      this.store.trigger.updateSessionRoom({ room: snapshot });
-      this.notifyRoomSnapshotChanged();
+      this.store.trigger.updateSessionRoom({ room: snapshot, applySnapshotToControlledTab: true });
     });
   }
 
@@ -223,8 +216,7 @@ export class PartySessionService {
         memberName: this.state.settings.memberName,
       });
 
-      await this.applyRoomResponse(response);
-      this.notifyRoomSnapshotChanged();
+      await this.applyRoomResponse(response, true);
     } catch (error) {
       this.store.trigger.setSessionError({ message: getErrorMessage(error) });
     }
@@ -257,7 +249,10 @@ export class PartySessionService {
     });
   }
 
-  private async applyRoomResponse(response: RoomResponse): Promise<void> {
+  private async applyRoomResponse(
+    response: RoomResponse,
+    applySnapshotToControlledTab = false,
+  ): Promise<void> {
     const currentSession = selectSession(this.state);
     const nextSession = {
       roomCode: response.snapshot.roomCode,
@@ -271,7 +266,11 @@ export class PartySessionService {
           ? currentSession.playbackClientSequence
           : 0,
     };
-    this.store.trigger.setJoinedSession({ session: nextSession, room: response.snapshot });
+    this.store.trigger.setJoinedSession({
+      session: nextSession,
+      room: response.snapshot,
+      applySnapshotToControlledTab,
+    });
     await this.settingsStore.persist();
   }
 
@@ -309,10 +308,6 @@ export class PartySessionService {
       this.validateOutboundPayload(playbackUpdateRequestSchema, update),
     );
     return this.unwrapAckResponse(response);
-  }
-
-  private notifyRoomSnapshotChanged(): void {
-    this.options.onRoomSnapshotChanged();
   }
 
   private async getConnection(): Promise<RealtimeConnection> {

@@ -81,11 +81,11 @@ export function runServiceContentScript(serviceId: ServiceId, plugin: ServicePlu
         };
       };
 
-      const sendContextIfChanged = (options: { force?: boolean } = {}) => {
+      const sendContextIfChanged = (force = false) => {
         const context = readContext();
         const key = context ? `${context.serviceId}::${context.mediaId}` : null;
 
-        if (!options.force && key === lastContextKey) return;
+        if (!force && key === lastContextKey) return;
         lastContextKey = key;
 
         void sendMessage('content:context', context).catch(() => undefined);
@@ -159,7 +159,7 @@ export function runServiceContentScript(serviceId: ServiceId, plugin: ServicePlu
 
         if (playbackJustUnblocked) {
           suppressPlaybackEventsUntil = performance.now() + APPLIED_SNAPSHOT_EVENT_SUPPRESSION_MS;
-          sendContextIfChanged({ force: true });
+          sendContextIfChanged(true);
           return;
         }
 

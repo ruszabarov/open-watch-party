@@ -97,9 +97,9 @@ function createJoinedSessionState(
 
 function createSessionErrorState(
   state: BackgroundState,
-  options: { clearSession?: boolean } = {},
+  clearSession = false,
 ): BackgroundSessionState {
-  return options.clearSession
+  return clearSession
     ? { kind: 'idle', connectionStatus: 'error' }
     : { ...state.sessionState, connectionStatus: 'error' };
 }
@@ -169,6 +169,10 @@ function advancePlaybackClientSequence(state: BackgroundState): BackgroundSessio
 export function createSyncedBackgroundStore() {
   const store = createStore({
     context: createBackgroundState(),
+    emits: {
+      controlledTabMediaSwitchRequested: (_payload: { context: WatchPageContext }) => {},
+      roomSnapshotChanged: () => {},
+    },
     on: {
       hydrateSettings: (
         state,
@@ -182,25 +186,49 @@ export function createSyncedBackgroundStore() {
         ...state,
         settings: event.settings,
       }),
-      setControlledTab: (state, event: { tabId: number; context: WatchPageContext }) => ({
-        ...state,
-        controlledTab: {
-          tabId: event.tabId,
-          context: event.context,
+      setControlledTab: (
+        state,
+        event: {
+          tabId: number;
+          context: WatchPageContext;
+          requestMediaSwitch?: boolean;
         },
-      }),
+        enqueue,
+      ) => {
+        if (event.requestMediaSwitch) {
+          enqueue.emit.controlledTabMediaSwitchRequested({ context: event.context });
+        }
+
+        return {
+          ...state,
+          controlledTab: {
+            tabId: event.tabId,
+            context: event.context,
+          },
+        };
+      },
       clearControlledTab: (state) => ({
         ...state,
         controlledTab: null,
       }),
-      setJoinedSession: (state, event: { session: SessionInfo; room: PartySnapshot }) => ({
-        ...state,
-        sessionState: createJoinedSessionState(event.session, event.room),
-        lastError: null,
-      }),
+      setJoinedSession: (
+        state,
+        event: { session: SessionInfo; room: PartySnapshot; applySnapshotToControlledTab?: boolean },
+        enqueue,
+      ) => {
+        if (event.applySnapshotToControlledTab) {
+          enqueue.emit.roomSnapshotChanged();
+        }
+
+        return {
+          ...state,
+          sessionState: createJoinedSessionState(event.session, event.room),
+          lastError: null,
+        };
+      },
       setSessionError: (state, event: { message: string; clearSession?: boolean }) => ({
         ...state,
-        sessionState: createSessionErrorState(state, { clearSession: event.clearSession }),
+        sessionState: createSessionErrorState(state, event.clearSession),
         lastError: event.message,
       }),
       leaveRoom: (state) => ({
@@ -218,8 +246,17 @@ export function createSyncedBackgroundStore() {
         sessionState: updateSessionConnectionStatus(state, event.status),
         lastError: event.errorMessage ?? (event.status === 'connected' ? null : state.lastError),
       }),
-      updateSessionRoom: (state, event: { room: PartySnapshot }) =>
-        updateSessionRoom(state, event.room),
+      updateSessionRoom: (
+        state,
+        event: { room: PartySnapshot; applySnapshotToControlledTab?: boolean },
+        enqueue,
+      ) => {
+        if (event.applySnapshotToControlledTab) {
+          enqueue.emit.roomSnapshotChanged();
+        }
+
+        return updateSessionRoom(state, event.room);
+      },
       advancePlaybackClientSequence: (state) => ({
         ...state,
         sessionState: advancePlaybackClientSequence(state),

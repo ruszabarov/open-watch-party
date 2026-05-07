@@ -11,10 +11,13 @@ export default defineBackground(() => {
   const store = createSyncedBackgroundStore();
   const settingsStore = new SettingsStore(store);
   const controlledTabService = new ControlledTabService(store);
-  const partySessionService = new PartySessionService(store, settingsStore, {
-    onRoomSnapshotChanged: () => {
-      applyRoomSnapshotToControlledTab(store, controlledTabService);
-    },
+  const partySessionService = new PartySessionService(store, settingsStore);
+
+  store.on('roomSnapshotChanged', () => {
+    applyRoomSnapshotToControlledTab(store, controlledTabService);
+  });
+  store.on('controlledTabMediaSwitchRequested', ({ context }) => {
+    partySessionService.updateRoomMediaFromControlledTab(context);
   });
 
   registerContentHandlers(controlledTabService, partySessionService);
@@ -99,10 +102,7 @@ function registerContentHandlers(
 ): void {
   onMessage('content:context', async ({ data, sender }) => {
     if (sender.tab?.id != null) {
-      const event = await controlledTabService.handleContentContext(sender.tab.id, data);
-      if (event?.type === 'media-switch-requested') {
-        partySessionService.updateRoomMediaFromControlledTab(event.context);
-      }
+      await controlledTabService.handleContentContext(sender.tab.id, data);
     }
   });
 
