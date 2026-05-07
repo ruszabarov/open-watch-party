@@ -1,37 +1,104 @@
 # Open Watch Party
 
-Open-source watch party stack built as a pnpm workspace:
+Open Watch Party is an open source, lightweight, and free browser extension for
+watch parties on your favorite streaming services.
 
-- `apps/extension`: WXT + Svelte browser extension
-- `apps/server`: Socket.IO realtime backend with in-memory room state
-- `packages/shared`: shared protocol types and room logic
+Create a room, share the invite code with friends, and keep playback in sync
+while everyone watches from their own browser. Contributions for more services
+are welcome.
 
-## Supported services
+Repository: https://github.com/ruszabarov/open-watch-party
+
+## Features
+
+- Free and open source
+- Lightweight browser extension built with WXT and Svelte
+- Realtime play, pause, seek, and playback-state sync
+- Room-based watch parties with shareable invite codes
+- Built for supported watch pages
+- Self-hostable Socket.IO backend
+
+## Supported Services
 
 | Service | Watch URL pattern                                                                          |
 | ------- | ------------------------------------------------------------------------------------------ |
 | Netflix | `netflix.com/watch/...`                                                                    |
 | YouTube | `youtube.com/watch?v=...`, `youtu.be/...`, `youtube.com/embed/...`, `youtube.com/live/...` |
 
-Adding a service starts in `packages/shared/src/services.ts`, which owns the
-service ID, display metadata, URL parsing, canonical watch URL builder, and
-extension match patterns. Then add the extension-only DOM integration under
-`apps/extension/src/utils/services/<id>.ts`, add a one-line
-`runServiceContentScript(MY_SERVICE)` entrypoint, and register the plugin in
-`SERVICE_PLUGINS`.
+Want another service? Please open an issue or pull request with the service you
+want to add. Adding support usually requires shared service metadata plus an
+extension-side player integration.
 
-## Commands
+## Project Structure
+
+This repository is a pnpm workspace:
+
+- `apps/extension`: WXT + Svelte browser extension
+- `apps/server`: Socket.IO realtime backend with in-memory room state
+- `packages/shared`: shared protocol types and room logic
+- `docs/store-listings.md`: reusable browser-store listing copy
+
+## Development
+
+Install dependencies:
 
 ```bash
 pnpm install
+```
+
+Run the backend:
+
+```bash
 pnpm dev:server
+```
+
+Run the extension:
+
+```bash
 pnpm dev:extension
+```
+
+Useful checks:
+
+```bash
 pnpm check
 pnpm build
 pnpm build:firefox
 pnpm build:safari
 make safari
 ```
+
+## Extension Environment
+
+Copy [apps/extension/.env.example](apps/extension/.env.example) to
+`apps/extension/.env` and set:
+
+- `SERVER_URL`: default backend URL used by the extension
+
+## Adding A Service
+
+Adding a service starts in `packages/shared/src/services.ts`, which owns the
+service ID, display metadata, URL parsing, canonical watch URL builder, and
+extension match patterns.
+
+Then add the extension-only DOM integration under
+`apps/extension/src/utils/services/<id>.ts`, add a one-line
+`runServiceContentScript(MY_SERVICE)` entrypoint, and register the plugin in
+`SERVICE_PLUGINS`.
+
+Issues and pull requests for new services, bug fixes, documentation, and store
+listing improvements are welcome.
+
+## Backend Notes
+
+The realtime backend is a plain Node + Socket.IO service with in-memory room
+state. You can run or deploy it however you prefer.
+
+Keep these constraints in mind:
+
+- run a single instance only
+- rooms are cleared when the server restarts or redeploys
+- horizontal scaling is not supported without changing the architecture
 
 ## Releases
 
@@ -42,8 +109,8 @@ pnpm release:extension patch
 pnpm release:server patch
 ```
 
-Replace `patch` with `minor`, `major`, or an explicit semver version when needed.
-Dry-run commands are also available:
+Replace `patch` with `minor`, `major`, or an explicit semver version when
+needed. Dry-run commands are also available:
 
 ```bash
 pnpm release:extension:dry-run patch
@@ -56,87 +123,3 @@ workflow packages Chrome, Firefox, Firefox sources, and Safari zips, uploads all
 zips to the GitHub Release page, and submits Chrome and Firefox through WXT.
 Safari publishing remains manual; download the Safari zip from the GitHub
 Release and use Apple's conversion/wrapper flow.
-
-The server release command bumps `apps/server/package.json`, commits the change,
-creates a `server-v*` tag, and pushes it. The server release workflow builds the
-Docker image and publishes it to GitHub Container Registry:
-
-```bash
-docker pull ghcr.io/<owner>/<repo>-server:latest
-docker pull ghcr.io/<owner>/<repo>-server:<version>
-```
-
-For this repository, the image name is:
-
-```bash
-ghcr.io/ruszabarov/open-watch-party-server
-```
-
-## Extension Environment
-
-Copy [apps/extension/.env.example](apps/extension/.env.example) to `apps/extension/.env` and set:
-
-- `SERVER_URL`: default backend URL used by the extension
-
-## Self-Hosting The Server
-
-The realtime backend is a plain Node + Socket.IO service with in-memory room state. That keeps self-hosting simple, but it also means:
-
-- run a single instance only
-- rooms are cleared when the server restarts or redeploys
-- horizontal scaling is not supported without changing the architecture
-
-### Docker
-
-Build and run the server:
-
-```bash
-docker build -t open-watch-party-server .
-docker run --rm -p 8787:8787 open-watch-party-server
-```
-
-Or use Docker Compose:
-
-```bash
-docker compose -f apps/server/docker-compose.yml up --build
-```
-
-### VPS Deployment With Watchtower
-
-Use `apps/server/docker-compose.vps.yml` on the VPS to run the published GHCR
-image and automatically pull new `latest` images after server releases:
-
-```bash
-docker compose -f apps/server/docker-compose.vps.yml up -d
-```
-
-Watchtower checks every 5 minutes, updates only containers with the
-`com.centurylinklabs.watchtower.enable=true` label, restarts the server when a
-new image is available, and removes old images after successful updates.
-
-If the GHCR package is private, log in once on the VPS before starting Compose:
-
-```bash
-echo '<github_pat_with_read_packages>' | docker login ghcr.io -u '<github_username>' --password-stdin
-```
-
-Manual update or rollback commands:
-
-```bash
-docker compose -f apps/server/docker-compose.vps.yml pull open-watch-party-server
-docker compose -f apps/server/docker-compose.vps.yml up -d open-watch-party-server
-docker compose -f apps/server/docker-compose.vps.yml logs -f open-watch-party-server
-```
-
-Server environment variables:
-
-- `PORT`: HTTP and WebSocket port inside the container. Defaults to `8787`.
-- `LOG_LEVEL`: server log level. Defaults to `info`.
-
-Health check:
-
-```bash
-curl http://localhost:8787/health
-```
-
-Point the extension at your deployed server by setting `SERVER_URL` in `apps/extension/.env`.

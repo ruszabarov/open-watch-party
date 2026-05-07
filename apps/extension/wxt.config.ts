@@ -39,7 +39,7 @@ export default defineConfig({
   }),
   manifest: {
     name: 'Open Watch Party',
-    description: 'Cross-platform watch parties for Netflix and YouTube with realtime sync.',
+    description: 'Free, open source, lightweight watch parties with realtime playback sync.',
     icons: {
       16: '/16.png',
       32: '/32.png',
