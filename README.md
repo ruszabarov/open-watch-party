@@ -100,6 +100,11 @@ Keep these constraints in mind:
 - rooms are cleared when the server restarts or redeploys
 - horizontal scaling is not supported without changing the architecture
 
+## Credits
+
+Logo icon attribution:
+<a href="https://www.flaticon.com/free-icons/watching" title="watching icons">Watching icons created by Hilmy Abiyyu A. - Flaticon</a>
+
 ## Releases
 
 Extension and server versions are released independently with release-it:

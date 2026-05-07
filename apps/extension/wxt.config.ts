@@ -42,9 +42,10 @@ export default defineConfig({
     description: 'Free, open source, lightweight watch parties with realtime playback sync.',
     icons: {
       16: '/16.png',
+      24: '/24.png',
       32: '/32.png',
       48: '/48.png',
-      96: '/96.png',
+      64: '/64.png',
       128: '/128.png',
     },
     permissions: ['storage', 'tabs'],
