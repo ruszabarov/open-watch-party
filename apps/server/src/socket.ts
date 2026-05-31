@@ -1,8 +1,15 @@
 import { Server, type Socket } from 'socket.io';
 import {
+  applyPlaybackUpdate,
   createRoomRequestSchema,
+  createRoomState,
   joinRoomRequestSchema,
+  normalizeRoomCode,
   playbackUpdateRequestSchema,
+  removeRoomMember,
+  toPartySnapshot,
+  upsertRoomMember,
+  type Acknowledge,
   type ClientToServerEvents,
   type CreateRoomRequest,
   type JoinRoomRequest,
@@ -20,16 +27,9 @@ import {
   SOCKET_SESSION_REQUIRED_ERROR,
 } from './error';
 import { logger } from './logger';
-import { RoomService, type RoomLeaveResult } from './room.service';
+import { createInMemoryRoomStore, type RoomStore, type RoomStoreRemovalReason } from './room.store';
 import { SessionRegistry } from './session';
-import {
-  type Ack,
-  acknowledge as acknowledgeResult,
-  failure,
-  invalidPayload,
-  success,
-} from './utils';
-import type { RoomStoreRemovalReason } from './room.store';
+import { acknowledge as acknowledgeResult, failure, invalidPayload, success } from './utils';
 
 type ConnectionSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 type RealtimeServer = Server<ClientToServerEvents, ServerToClientEvents>;
@@ -52,15 +52,37 @@ export type JoinedRoomResult = RoomResponse & {
   };
 };
 
+type RoomLeaveResult = {
+  readonly roomCode: string;
+  readonly remainingSnapshot: PartySnapshot | null;
+};
+
+type PlaybackUpdateResult = {
+  readonly roomCode: string;
+  readonly snapshot: PartySnapshot;
+};
+
+const DEFAULT_MAX_ROOMS = 1_000;
+const DEFAULT_ROOM_IDLE_TTL_MS = 6 * 60 * 60 * 1_000;
+const MAX_CONNECTIONS_PER_ADDRESS = 50;
+
 const log = logger.child({ scope: 'socket' });
 
 export class RealtimeSocketService {
   private readonly sessions = new SessionRegistry();
-  private readonly rooms: RoomService;
+  private readonly store: RoomStore;
+  private readonly connectionsByAddress = new Map<string, number>();
 
   constructor(private readonly io: RealtimeServer) {
-    this.rooms = new RoomService({
+    this.store = createInMemoryRoomStore({
+      maxRooms: DEFAULT_MAX_ROOMS,
+      roomIdleTtlMs: DEFAULT_ROOM_IDLE_TTL_MS,
       onRoomRemoved: (room, reason) => {
+        log.info(
+          { roomCode: room.roomCode, reason, memberCount: room.members.size },
+          'room:removed',
+        );
+
         const closedReason = toRoomClosedReason(reason);
         if (closedReason) {
           this.io.to(room.roomCode).emit('room:closed', {
@@ -79,6 +101,13 @@ export class RealtimeSocketService {
   }
 
   readonly handleConnection = (socket: ConnectionSocket): void => {
+    const address = remoteAddress(socket);
+    if (address && !this.openConnection(address)) {
+      log.warn({ socketId: socket.id, address }, 'socket:connection_rejected');
+      socket.disconnect(true);
+      return;
+    }
+
     log.info({ socketId: socket.id }, 'socket:connected');
 
     socket.on('room:create', (payload, acknowledge) => {
@@ -104,6 +133,10 @@ export class RealtimeSocketService {
     });
 
     socket.on('disconnect', () => {
+      if (address) {
+        this.closeConnection(address);
+      }
+
       const session = this.sessions.get(socket.id);
       if (!session) {
         log.info({ socketId: socket.id }, 'socket:disconnected_without_session');
@@ -125,14 +158,14 @@ export class RealtimeSocketService {
       }
 
       this.sessions.remove(socket.id);
-      const result = this.rooms.leaveRoom(session.roomCode, session.memberId);
+      const result = this.removeMemberFromRoom(session.roomCode, session.memberId);
       this.broadcastRoomState(result);
     });
   };
 
   private handleAcknowledgedRequest<TPayload, TResponse>(
     payload: unknown,
-    acknowledge: Ack<TResponse>,
+    acknowledge: Acknowledge<TResponse>,
     schema: PayloadSchema<TPayload>,
     operation: (payload: TPayload) => OperationResult<TResponse>,
   ): void {
@@ -149,14 +182,14 @@ export class RealtimeSocketService {
     socket: ConnectionSocket,
     payload: CreateRoomRequest,
   ): OperationResult<RoomResponse> {
-    const roomResult = this.rooms.createRoom(payload);
+    const roomResult = this.openRoom(payload);
     if (!roomResult.ok) {
       return roomResult;
     }
 
     const roomCode = roomResult.data.snapshot.roomCode;
     if (!this.sessions.canBindMember(socket.id, roomCode, payload.memberId)) {
-      this.rooms.leaveRoom(roomCode, payload.memberId);
+      this.removeMemberFromRoom(roomCode, payload.memberId);
       return failure(ACTIVE_ROOM_EXISTS_ERROR);
     }
 
@@ -178,7 +211,7 @@ export class RealtimeSocketService {
       return failure(ACTIVE_ROOM_EXISTS_ERROR);
     }
 
-    const roomResult = this.rooms.joinRoom(payload);
+    const roomResult = this.addMemberToRoom(payload);
     if (!roomResult.ok) {
       return roomResult;
     }
@@ -199,7 +232,7 @@ export class RealtimeSocketService {
       return failure(SOCKET_SESSION_REQUIRED_ERROR);
     }
 
-    const result = this.rooms.leaveRoom(session.roomCode, session.memberId);
+    const result = this.removeMemberFromRoom(session.roomCode, session.memberId);
     log.info(
       {
         socketId: socket.id,
@@ -226,7 +259,7 @@ export class RealtimeSocketService {
       return failure(PLAYBACK_UPDATE_RATE_LIMIT_ERROR);
     }
 
-    const result = this.rooms.updatePlayback(session.roomCode, session.memberId, payload);
+    const result = this.applyRoomPlayback(session.roomCode, session.memberId, payload);
     if (!result.ok) {
       return result;
     }
@@ -235,6 +268,84 @@ export class RealtimeSocketService {
 
     return success(result.data.snapshot);
   }
+
+  // --- Room state (formerly RoomService) -----------------------------------
+
+  private openRoom(payload: CreateRoomRequest): OperationResult<RoomResponse> {
+    const roomCode = this.store.generateUniqueRoomCode();
+    const room = createRoomState(roomCode, payload);
+    upsertRoomMember(room, payload.memberId, payload.memberName);
+    this.store.set(room);
+
+    const snapshot = toPartySnapshot(room);
+    log.info(
+      { roomCode, memberId: payload.memberId, roomCount: this.store.size() },
+      'room:create_ok',
+    );
+
+    return success({ memberId: payload.memberId, snapshot });
+  }
+
+  private addMemberToRoom(payload: JoinRoomRequest): OperationResult<RoomResponse> {
+    const room = this.store.get(normalizeRoomCode(payload.roomCode));
+    if (!room) {
+      return failure('Room not found.');
+    }
+
+    upsertRoomMember(room, payload.memberId, payload.memberName);
+    this.store.set(room);
+
+    const snapshot = toPartySnapshot(room);
+    log.info(
+      { roomCode: payload.roomCode, memberId: payload.memberId, memberCount: room.members.size },
+      'room:join_ok',
+    );
+
+    return success({ memberId: payload.memberId, snapshot });
+  }
+
+  private removeMemberFromRoom(roomCodeValue: string, memberId: string): RoomLeaveResult {
+    const roomCode = normalizeRoomCode(roomCodeValue);
+    const room = this.store.get(roomCode);
+    if (!room) {
+      return { roomCode, remainingSnapshot: null };
+    }
+
+    removeRoomMember(room, memberId);
+
+    if (room.members.size === 0) {
+      log.info({ roomCode, memberId }, 'room:remove_empty');
+      this.store.delete(roomCode);
+      return { roomCode, remainingSnapshot: null };
+    }
+
+    this.store.set(room);
+    log.info({ roomCode, memberId, memberCount: room.members.size }, 'room:member_left');
+
+    return { roomCode, remainingSnapshot: toPartySnapshot(room) };
+  }
+
+  private applyRoomPlayback(
+    roomCodeValue: string,
+    memberId: string,
+    payload: PlaybackUpdate,
+  ): OperationResult<PlaybackUpdateResult> {
+    const room = this.store.get(normalizeRoomCode(roomCodeValue));
+    if (!room) {
+      return failure('Room not found.');
+    }
+
+    if (!room.members.has(memberId)) {
+      return failure('Member is not part of this room.');
+    }
+
+    applyPlaybackUpdate(room, payload, memberId);
+    this.store.set(room);
+
+    return success({ roomCode: room.roomCode, snapshot: toPartySnapshot(room) });
+  }
+
+  // --- Socket plumbing ------------------------------------------------------
 
   private joinSocketToRoom(socket: ConnectionSocket, result: JoinedRoomResult): void {
     if (result.replacedSocket) {
@@ -267,6 +378,30 @@ export class RealtimeSocketService {
     );
     this.io.sockets.sockets.get(replacedSocket.socketId)?.disconnect(true);
   }
+
+  private openConnection(address: string): boolean {
+    const current = this.connectionsByAddress.get(address) ?? 0;
+    if (current >= MAX_CONNECTIONS_PER_ADDRESS) {
+      return false;
+    }
+
+    this.connectionsByAddress.set(address, current + 1);
+    return true;
+  }
+
+  private closeConnection(address: string): void {
+    const current = this.connectionsByAddress.get(address) ?? 0;
+    if (current <= 1) {
+      this.connectionsByAddress.delete(address);
+      return;
+    }
+
+    this.connectionsByAddress.set(address, current - 1);
+  }
+}
+
+function remoteAddress(socket: ConnectionSocket): string | null {
+  return socket.handshake?.address ?? null;
 }
 
 function toRoomClosedReason(reason: RoomStoreRemovalReason): RoomClosedReason | null {

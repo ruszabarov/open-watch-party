@@ -1,10 +1,14 @@
 import { z } from 'zod';
-import { isStreamingServiceId, type StreamingServiceId } from './streaming-services';
-export type { StreamingServiceId } from './streaming-services';
+import { isServiceId, type ServiceId } from './streaming-services';
+export type { ServiceId } from './streaming-services';
 
 export const MAX_MEMBER_NAME_LENGTH = 64;
 export const MAX_TITLE_LENGTH = 256;
 export const MAX_PLAYBACK_POSITION_SEC = 48 * 60 * 60;
+
+// Shared so the server and the extension cannot drift on the wording.
+export const ACTIVE_ROOM_EXISTS_ERROR =
+  'Leave your current room before joining or creating another room.';
 
 const CONTROL_CHARACTERS_PATTERN = /\p{Cc}+/gu;
 
@@ -15,7 +19,7 @@ export interface PartyMember {
 }
 
 export interface PlaybackState {
-  streamingServiceId: StreamingServiceId;
+  serviceId: ServiceId;
   mediaId: string;
   title?: string;
   playing: boolean;
@@ -26,7 +30,7 @@ export interface PlaybackState {
 
 export interface PartySnapshot {
   roomCode: string;
-  streamingServiceId: StreamingServiceId;
+  serviceId: ServiceId;
   watchUrl: string;
   members: PartyMember[];
   playback: PlaybackState;
@@ -61,8 +65,8 @@ const roomCodeSchema = z
   .pipe(z.string().min(1));
 const memberIdSchema = z.string().trim().min(1);
 const mediaIdSchema = z.string().trim().min(1);
-const streamingServiceIdSchema = z.custom<StreamingServiceId>(
-  (value) => typeof value === 'string' && isStreamingServiceId(value),
+const serviceIdSchema = z.custom<ServiceId>(
+  (value) => typeof value === 'string' && isServiceId(value),
   { message: 'Unsupported streaming service id' },
 );
 const positionSchema = z.number().min(0).max(MAX_PLAYBACK_POSITION_SEC);
@@ -79,13 +83,11 @@ export const playbackDraftSchema = z.object({
   playing: z.boolean(),
 });
 
-export const playbackStateInputSchema = playbackDraftSchema;
-
 export const createRoomRequestSchema = z.object({
   memberId: memberIdSchema,
   memberName: memberNameSchema,
-  streamingServiceId: streamingServiceIdSchema,
-  initialPlayback: playbackStateInputSchema,
+  serviceId: serviceIdSchema,
+  initialPlayback: playbackDraftSchema,
 });
 
 export const joinRoomRequestSchema = z.object({
@@ -96,7 +98,6 @@ export const joinRoomRequestSchema = z.object({
 
 export const playbackUpdateRequestSchema = playbackDraftSchema.strict();
 
-export type PlaybackStateInput = z.output<typeof playbackStateInputSchema>;
 export type PlaybackUpdate = z.output<typeof playbackUpdateRequestSchema>;
 export type CreateRoomRequest = z.output<typeof createRoomRequestSchema>;
 export type JoinRoomRequest = z.output<typeof joinRoomRequestSchema>;

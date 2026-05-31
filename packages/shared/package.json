@@ -7,9 +7,13 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "zod": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
   }
 }

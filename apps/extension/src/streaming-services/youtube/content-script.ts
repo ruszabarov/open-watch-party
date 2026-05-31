@@ -1,11 +1,11 @@
-import { STREAMING_SERVICE_DEFINITION_BY_ID } from '@open-watch-party/shared';
+import { SERVICE_BY_ID } from '@open-watch-party/shared';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 
 import { onMessage, sendMessage, type WatchReport } from '../../messaging';
 import { isVideoTimelineReady } from '../playback-readiness';
 import { isYoutubeAdPlayback } from './ads';
 
-const YOUTUBE = STREAMING_SERVICE_DEFINITION_BY_ID.youtube;
+const YOUTUBE = SERVICE_BY_ID.youtube;
 const VIDEO_EVENTS = [
   'play',
   'pause',
@@ -50,7 +50,7 @@ export function runYoutubeContentScript(ctx: ContentScriptContext): void {
     }
 
     return {
-      streamingServiceId: 'youtube',
+      serviceId: 'youtube',
       mediaId,
       title: document.title,
       positionSec: Number(activeVideo.currentTime.toFixed(3)),

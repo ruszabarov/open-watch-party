@@ -1,11 +1,10 @@
-import type { OperationResult } from '@open-watch-party/shared';
+import type { Acknowledge, OperationResult } from '@open-watch-party/shared';
 import { INVALID_PAYLOAD_ERROR } from './error';
 
-export type Ack<T> = (response: OperationResult<T>) => void;
 type AckOperation<T> = () => OperationResult<T>;
 
 export function acknowledge<TResponse>(
-  acknowledgeResponse: Ack<TResponse>,
+  acknowledgeResponse: Acknowledge<TResponse>,
   operation: AckOperation<TResponse>,
 ): void {
   const response = runAckOperation(operation);

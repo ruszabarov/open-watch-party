@@ -4,7 +4,7 @@ import { MAX_TITLE_LENGTH } from '@open-watch-party/shared';
 
 import { RealtimeSocketService } from '../src/socket';
 
-/** Mirrors `DEFAULT_ROOM_IDLE_TTL_MS` in room.service (not exported). */
+/** Mirrors `DEFAULT_ROOM_IDLE_TTL_MS` in socket.ts (not exported). */
 const ROOM_IDLE_TTL_MS = 6 * 60 * 60 * 1_000;
 
 type RecordedEmission = {
@@ -96,7 +96,7 @@ function createRoom(
   overrides: Partial<{
     memberId: string;
     memberName: string;
-    streamingServiceId: string;
+    serviceId: string;
     title: string;
   }> = {},
 ): RoomResponse {
@@ -107,7 +107,7 @@ function createRoom(
     {
       memberId: overrides.memberId ?? 'member-a',
       memberName: overrides.memberName ?? 'Member A',
-      streamingServiceId: overrides.streamingServiceId ?? 'youtube',
+      serviceId: overrides.serviceId ?? 'youtube',
       initialPlayback: {
         mediaId: 'abc123',
         title: overrides.title ?? 'Clip',
@@ -173,7 +173,7 @@ describe('socket handlers', () => {
       {
         memberId: ' member-a ',
         memberName: '\n  Host\u0000  ',
-        streamingServiceId: 'youtube',
+        serviceId: 'youtube',
         initialPlayback: {
           mediaId: ' abc123 ',
           title: ` ${'T'.repeat(MAX_TITLE_LENGTH + 20)} `,
@@ -193,7 +193,7 @@ describe('socket handlers', () => {
         snapshot: {
           members: [{ id: 'member-a', name: 'Host' }],
           playback: {
-            streamingServiceId: 'youtube',
+            serviceId: 'youtube',
             title: 'T'.repeat(MAX_TITLE_LENGTH),
           },
         },
@@ -216,7 +216,7 @@ describe('socket handlers', () => {
         {
           memberId: 'member-a',
           memberName: 'Member A',
-          streamingServiceId: 'netflix',
+          serviceId: 'netflix',
           initialPlayback: {
             mediaId: 'not-a-netflix-id',
             title: 'Clip',
@@ -307,7 +307,7 @@ describe('socket handlers', () => {
       data: {
         watchUrl: 'https://www.youtube.com/watch?v=next456',
         playback: {
-          streamingServiceId: 'youtube',
+          serviceId: 'youtube',
           mediaId: 'next456',
           title: 'Next clip',
           positionSec: 0,

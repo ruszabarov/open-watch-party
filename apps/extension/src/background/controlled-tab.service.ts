@@ -1,16 +1,10 @@
 import { browser } from 'wxt/browser';
-import type { PartySnapshot, PlaybackUpdate, StreamingServiceId } from '@open-watch-party/shared';
+import type { PartySnapshot, PlaybackUpdate, ServiceId } from '@open-watch-party/shared';
 import { sendMessage, type WatchReport } from '../messaging';
-import {
-  findStreamingServiceByUrl,
-  getStreamingServiceDefinition,
-} from '../streaming-services/catalog';
+import { findServiceByUrl, getServiceDefinition } from '../streaming-services/catalog';
 import { clearControlledTab, getBackgroundState, setControlledTab, setLastWarning } from './state';
 
-function isStreamingServiceUrl(
-  definition: { matchesUrl(url: URL): boolean },
-  rawUrl: string,
-): boolean {
+function isServiceUrl(definition: { matchesUrl(url: URL): boolean }, rawUrl: string): boolean {
   return URL.canParse(rawUrl) && definition.matchesUrl(new URL(rawUrl));
 }
 
@@ -39,7 +33,7 @@ export class ControlledTabService {
       return;
     }
 
-    if (report.streamingServiceId !== room.streamingServiceId) {
+    if (report.serviceId !== room.serviceId) {
       return;
     }
 
@@ -65,7 +59,7 @@ export class ControlledTabService {
     const { room, controlledTab } = await getBackgroundState();
     if (!room || !controlledTab) return;
 
-    const tabMediaId = await this.readWatchTabMediaId(controlledTab.tabId, room.streamingServiceId);
+    const tabMediaId = await this.readWatchTabMediaId(controlledTab.tabId, room.serviceId);
     if (tabMediaId !== room.playback.mediaId) {
       await this.navigateControlledTabToRoom(controlledTab.tabId, room.watchUrl, false);
       return;
@@ -95,32 +89,24 @@ export class ControlledTabService {
 
   async requireControllableWatchTab(
     tabId: number,
-  ): Promise<{ streamingServiceId: StreamingServiceId; playback: PlaybackUpdate }> {
+  ): Promise<{ serviceId: ServiceId; playback: PlaybackUpdate }> {
     const tab = await browser.tabs.get(tabId);
-    const match = findStreamingServiceByUrl(tab.url);
+    const match = findServiceByUrl(tab.url);
     if (!match) {
       throw new Error('Open a supported watch page before starting a party.');
     }
     if (!match.isWatchPage) {
-      throw new Error(
-        `Open a ${match.streamingService.descriptor.label} watch page to start a party.`,
-      );
+      throw new Error(`Open a ${match.service.descriptor.label} watch page to start a party.`);
     }
 
-    const expectedMediaId = match.streamingService.extractMediaId(new URL(tab.url!));
+    const expectedMediaId = match.service.extractMediaId(new URL(tab.url!));
     const report = await this.requestWatchReportFromTab(tabId);
 
-    if (
-      !report ||
-      report.streamingServiceId !== match.streamingServiceId ||
-      report.mediaId !== expectedMediaId
-    ) {
-      throw new Error(
-        `${match.streamingService.descriptor.label} playback state is not ready yet.`,
-      );
+    if (!report || report.serviceId !== match.serviceId || report.mediaId !== expectedMediaId) {
+      throw new Error(`${match.service.descriptor.label} playback state is not ready yet.`);
     }
 
-    return { streamingServiceId: match.streamingServiceId, playback: toPlaybackUpdate(report) };
+    return { serviceId: match.serviceId, playback: toPlaybackUpdate(report) };
   }
 
   private async requestWatchReportFromTab(tabId: number): Promise<WatchReport | null> {
@@ -152,9 +138,9 @@ export class ControlledTabService {
       return;
     }
 
-    const sessionStreamingService = getStreamingServiceDefinition(session.streamingServiceId);
-    if (sessionStreamingService && !isStreamingServiceUrl(sessionStreamingService, url)) {
-      await setLastWarning(`The controlled tab left ${sessionStreamingService.descriptor.label}.`);
+    const sessionService = getServiceDefinition(session.serviceId);
+    if (sessionService && !isServiceUrl(sessionService, url)) {
+      await setLastWarning(`The controlled tab left ${sessionService.descriptor.label}.`);
     }
   }
 
@@ -167,17 +153,14 @@ export class ControlledTabService {
     this.options.onControlledTabClosed();
   }
 
-  private async readWatchTabMediaId(
-    tabId: number,
-    streamingServiceId: StreamingServiceId,
-  ): Promise<string | null> {
+  private async readWatchTabMediaId(tabId: number, serviceId: ServiceId): Promise<string | null> {
     const tab = await browser.tabs.get(tabId);
-    const match = findStreamingServiceByUrl(tab.url);
-    if (!match || match.streamingServiceId !== streamingServiceId || !match.isWatchPage) {
+    const match = findServiceByUrl(tab.url);
+    if (!match || match.serviceId !== serviceId || !match.isWatchPage) {
       return null;
     }
 
-    return match.streamingService.extractMediaId(new URL(tab.url!));
+    return match.service.extractMediaId(new URL(tab.url!));
   }
 }
 

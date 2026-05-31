@@ -1,16 +1,8 @@
 import { createRoomCode, normalizeRoomCode, type RoomState } from '@open-watch-party/shared';
 import { LRUCache } from 'lru-cache';
 
-export interface RoomStore {
-  get(roomCode: string): RoomState | undefined;
-  set(room: RoomState): void;
-  delete(roomCode: string): void;
-  has(roomCode: string): boolean;
-  size(): number;
-  generateUniqueRoomCode(): string;
-}
-
 export type RoomStoreRemovalReason = LRUCache.DisposeReason;
+export type RoomStore = ReturnType<typeof createInMemoryRoomStore>;
 
 export type InMemoryRoomStoreOptions = {
   readonly maxRooms: number;
@@ -18,7 +10,7 @@ export type InMemoryRoomStoreOptions = {
   onRoomRemoved?: (room: RoomState, reason: RoomStoreRemovalReason) => void;
 };
 
-export function createInMemoryRoomStore(options: InMemoryRoomStoreOptions): RoomStore {
+export function createInMemoryRoomStore(options: InMemoryRoomStoreOptions) {
   const rooms = new LRUCache<string, RoomState>({
     max: options.maxRooms,
     ttl: options.roomIdleTtlMs,

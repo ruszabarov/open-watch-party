@@ -27,12 +27,8 @@ jobs:
       - name: Validate release version
         run: node scripts/validate-release-tag.mjs server apps/server/package.json server-v
 
-      - name: Check server
-        run: |
-          pnpm lint
-          pnpm format:check
-          pnpm --filter @open-watch-party/shared test
-          pnpm --filter @open-watch-party/server test
+      - name: Check
+        run: pnpm check
 
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin

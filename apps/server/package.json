@@ -7,6 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "release": "cd ../.. && release-it --config .release-it.server.json",
+    "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
   "dependencies": {
@@ -15,5 +16,8 @@
     "lru-cache": "^11.3.5",
     "pino": "catalog:",
     "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
   }
 }

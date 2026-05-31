@@ -1,4 +1,4 @@
-import { STREAMING_SERVICE_DEFINITION_BY_ID } from '@open-watch-party/shared';
+import { SERVICE_BY_ID } from '@open-watch-party/shared';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 
 import { onMessage, sendMessage, type WatchReport } from '../../messaging';
@@ -11,7 +11,7 @@ import {
 } from './player-rpc';
 import { isVideoTimelineReady } from '../playback-readiness';
 
-const NETFLIX = STREAMING_SERVICE_DEFINITION_BY_ID.netflix;
+const NETFLIX = SERVICE_BY_ID.netflix;
 const VIDEO_EVENTS = [
   'play',
   'pause',
@@ -54,7 +54,7 @@ export function runNetflixContentScript(ctx: ContentScriptContext): void {
     }
 
     return {
-      streamingServiceId: 'netflix',
+      serviceId: 'netflix',
       mediaId,
       title: document.title,
       positionSec: activeVideo.currentTime,

@@ -1,6 +1,6 @@
 import { defineExtensionMessaging } from '@webext-core/messaging';
 
-import type { PartySnapshot, StreamingServiceId } from '@open-watch-party/shared';
+import type { PartySnapshot, ServiceId } from '@open-watch-party/shared';
 
 export interface CreateRoomRequest {
   tabId: number;
@@ -12,7 +12,7 @@ export interface JoinRoomRequest {
 }
 
 export type WatchReport = {
-  streamingServiceId: StreamingServiceId;
+  serviceId: ServiceId;
   mediaId: string;
   title?: string;
   positionSec: number;

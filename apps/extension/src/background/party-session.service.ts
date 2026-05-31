@@ -1,5 +1,5 @@
 import { browser } from 'wxt/browser';
-import { normalizeRoomCode } from '@open-watch-party/shared';
+import { ACTIVE_ROOM_EXISTS_ERROR, normalizeRoomCode } from '@open-watch-party/shared';
 
 import type {
   CreateRoomRequest,
@@ -10,7 +10,7 @@ import type {
   RoomClosedEvent,
   RoomClosedReason,
   RoomResponse,
-  StreamingServiceId,
+  ServiceId,
 } from '@open-watch-party/shared';
 
 import { getErrorMessage } from '~/utils/errors.js';
@@ -26,7 +26,6 @@ import {
   updateSessionRoom,
 } from './state';
 
-const ACTIVE_ROOM_EXISTS_ERROR = 'Leave your current room before joining or creating another room.';
 const SERVER_URL = __DEFAULT_SERVER_URL__;
 
 export class PartySessionService {
@@ -52,11 +51,7 @@ export class PartySessionService {
     await this.rejoinRoom();
   }
 
-  async createRoom(
-    tabId: number,
-    streamingServiceId: StreamingServiceId,
-    playback: PlaybackUpdate,
-  ): Promise<void> {
+  async createRoom(tabId: number, serviceId: ServiceId, playback: PlaybackUpdate): Promise<void> {
     await this.assertNoActiveSession();
 
     const settings = await getSettings();
@@ -64,7 +59,7 @@ export class PartySessionService {
     const response = await this.emitRoomCreate({
       memberId: await this.ensureMemberId(),
       memberName: settings.memberName,
-      streamingServiceId,
+      serviceId,
       initialPlayback: playback,
     });
 
@@ -202,7 +197,7 @@ export class PartySessionService {
     const nextSession = {
       roomCode: response.snapshot.roomCode,
       memberId: response.memberId,
-      streamingServiceId: response.snapshot.streamingServiceId,
+      serviceId: response.snapshot.serviceId,
     };
     await setJoinedSession(nextSession, response.snapshot);
 
