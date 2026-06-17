@@ -28,7 +28,9 @@ jobs:
         run: pnpm check
 
       - name: Deploy to PartyKit
-        run: pnpm --filter @open-watch-party/server run deploy
+        run: pnpm --filter @open-watch-party/server exec partykit deploy --domain watch.ruszabarov.com
         env:
           PARTYKIT_TOKEN: ${{ secrets.PARTYKIT_TOKEN }}
           PARTYKIT_LOGIN: ${{ secrets.PARTYKIT_LOGIN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
