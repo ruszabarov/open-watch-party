@@ -4,18 +4,18 @@ import type {
   PartySnapshot,
   PlaybackState,
   PlaybackUpdate,
-  StreamingServiceId,
+  ServiceId,
 } from './protocol';
 import {
   sanitizeMemberName,
   sanitizeOptionalTitle,
   MAX_PLAYBACK_POSITION_SEC as maxPlaybackPositionSec,
 } from './protocol';
-import { STREAMING_SERVICE_DEFINITION_BY_ID } from './streaming-services';
+import { SERVICE_BY_ID } from './streaming-services';
 
 export interface RoomState {
   readonly roomCode: string;
-  readonly streamingServiceId: StreamingServiceId;
+  readonly serviceId: ServiceId;
   members: Map<string, PartyMember>;
   playback: PlaybackState;
   createdAt: number;
@@ -30,11 +30,10 @@ export function normalizeRoomCode(roomCode: string): string {
 
 export function createRoomCode(): string {
   const values = new Uint32Array(ROOM_CODE_LENGTH);
-  globalThis.crypto.getRandomValues(values);
+  crypto.getRandomValues(values);
 
   return Array.from(values, (value) => {
-    const index = value % ROOM_CODE_ALPHABET.length;
-    return ROOM_CODE_ALPHABET[index] ?? ROOM_CODE_ALPHABET[0];
+    return ROOM_CODE_ALPHABET.charAt(value % ROOM_CODE_ALPHABET.length);
   }).join('');
 }
 
@@ -43,11 +42,11 @@ export function createRoomState(
   request: CreateRoomRequest,
   now = Date.now(),
 ): RoomState {
-  assertValidMediaId(request.streamingServiceId, request.initialPlayback.mediaId);
+  assertValidMediaId(request.serviceId, request.initialPlayback.mediaId);
 
   const playback: PlaybackState = {
     ...request.initialPlayback,
-    streamingServiceId: request.streamingServiceId,
+    serviceId: request.serviceId,
     title: sanitizeOptionalTitle(request.initialPlayback.title),
     updatedAt: now,
     sourceMemberId: request.memberId,
@@ -55,7 +54,7 @@ export function createRoomState(
 
   return {
     roomCode,
-    streamingServiceId: request.streamingServiceId,
+    serviceId: request.serviceId,
     members: new Map<string, PartyMember>(),
     playback,
     createdAt: now,
@@ -89,10 +88,10 @@ export function applyPlaybackUpdate(
   memberId: string,
   now = Date.now(),
 ): PlaybackState {
-  assertValidMediaId(room.streamingServiceId, update.mediaId);
+  assertValidMediaId(room.serviceId, update.mediaId);
 
   const playback: PlaybackState = {
-    streamingServiceId: room.streamingServiceId,
+    serviceId: room.serviceId,
     mediaId: update.mediaId,
     playing: update.playing,
     positionSec: normalizePosition(update.positionSec),
@@ -121,13 +120,11 @@ export function resolvePlaybackState(playback: PlaybackState, now = Date.now()):
 }
 
 export function toPartySnapshot(room: RoomState, now = Date.now()): PartySnapshot {
-  const watchUrl = STREAMING_SERVICE_DEFINITION_BY_ID[
-    room.streamingServiceId
-  ].buildCanonicalWatchUrl(room.playback.mediaId);
+  const watchUrl = SERVICE_BY_ID[room.serviceId].buildCanonicalWatchUrl(room.playback.mediaId);
 
   return {
     roomCode: room.roomCode,
-    streamingServiceId: room.streamingServiceId,
+    serviceId: room.serviceId,
     watchUrl,
     members: [...room.members.values()].toSorted((left, right) => {
       return left.joinedAt - right.joinedAt;
@@ -145,8 +142,8 @@ function normalizePosition(value: number): number {
   return Math.min(maxPlaybackPositionSec, Math.max(0, Number(value.toFixed(3))));
 }
 
-function assertValidMediaId(streamingServiceId: StreamingServiceId, mediaId: string): void {
-  if (!STREAMING_SERVICE_DEFINITION_BY_ID[streamingServiceId].isMediaIdValid(mediaId)) {
+function assertValidMediaId(serviceId: ServiceId, mediaId: string): void {
+  if (!SERVICE_BY_ID[serviceId].isMediaIdValid(mediaId)) {
     throw new Error('Invalid media id for streaming service.');
   }
 }

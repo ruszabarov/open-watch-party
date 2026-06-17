@@ -25,8 +25,8 @@
     const { backgroundState, settings, activeTab }: Props = $props();
 
     let commandError: string | null = $state(null);
-    let dismissedBackgroundError: string | null = $state(null);
-    let dismissedBackgroundWarning: string | null = $state(null);
+    let dismissedErrorSeq = $state(0);
+    let dismissedWarningSeq = $state(0);
     let isBusy = $state(false);
     let settingsOpen = $state(false);
 
@@ -38,12 +38,12 @@
     );
     const visibleError = $derived(
         commandError ??
-            (backgroundState.lastError !== dismissedBackgroundError
+            (backgroundState.lastErrorSeq !== dismissedErrorSeq
                 ? backgroundState.lastError
                 : null),
     );
     const visibleWarning = $derived(
-        backgroundState.lastWarning !== dismissedBackgroundWarning
+        backgroundState.lastWarningSeq !== dismissedWarningSeq
             ? backgroundState.lastWarning
             : null,
     );
@@ -101,11 +101,11 @@
 
     function dismissError(): void {
         commandError = null;
-        dismissedBackgroundError = backgroundState.lastError;
+        dismissedErrorSeq = backgroundState.lastErrorSeq;
     }
 
     function dismissWarning(): void {
-        dismissedBackgroundWarning = backgroundState.lastWarning;
+        dismissedWarningSeq = backgroundState.lastWarningSeq;
     }
 
     function toggleSettings(): void {

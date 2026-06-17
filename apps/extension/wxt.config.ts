@@ -1,17 +1,22 @@
 import { defineConfig } from 'wxt';
 import tailwindcss from '@tailwindcss/vite';
-import { SUPPORTED_STREAMING_SERVICE_CONTENT_MATCHES } from '@open-watch-party/shared';
+import { SUPPORTED_SERVICE_CONTENT_MATCHES } from '@open-watch-party/shared';
 
-const LOCAL_SERVER_URL = 'http://localhost:8787';
+const LOCAL_PARTYKIT_HOST = 'localhost:1999';
 
-const defaultServerUrl = (process.env['SERVER_URL'] ?? LOCAL_SERVER_URL).trim().replace(/\/+$/, '');
+// partysocket connects to a bare host, deriving ws/wss itself, so strip any
+// protocol or trailing slash a deployment env var might include.
+const defaultPartyKitHost = (process.env['SERVER_URL'] ?? LOCAL_PARTYKIT_HOST)
+  .trim()
+  .replace(/^https?:\/\//, '')
+  .replace(/\/+$/, '');
 
 const connectSrc = [
   "'self'",
-  'http://localhost:8787',
-  'ws://localhost:8787',
-  'http://127.0.0.1:8787',
-  'ws://127.0.0.1:8787',
+  'http://localhost:1999',
+  'ws://localhost:1999',
+  'http://127.0.0.1:1999',
+  'ws://127.0.0.1:1999',
   // WXT dev server (Vite HMR + extension reload). Harmless in production
   // builds since localhost isn't reachable from a packaged extension.
   'http://localhost:3000',
@@ -20,7 +25,7 @@ const connectSrc = [
   'wss://*',
 ];
 
-const hostPermissions = [...SUPPORTED_STREAMING_SERVICE_CONTENT_MATCHES];
+const hostPermissions = [...SUPPORTED_SERVICE_CONTENT_MATCHES];
 
 export default defineConfig({
   srcDir: 'src',
@@ -28,7 +33,7 @@ export default defineConfig({
   vite: () => ({
     plugins: [tailwindcss()],
     define: {
-      __DEFAULT_SERVER_URL__: JSON.stringify(defaultServerUrl),
+      __DEFAULT_SERVER_URL__: JSON.stringify(defaultPartyKitHost),
     },
   }),
   manifest: {

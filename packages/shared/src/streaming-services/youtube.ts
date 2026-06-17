@@ -1,4 +1,4 @@
-import type { StreamingServiceDefinition } from '../streaming-services';
+import type { ServiceDefinition } from '../streaming-services';
 import { isSafeMediaId } from '../utils';
 
 const YOUTUBE_HOST_RE = /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com)$/;
@@ -26,7 +26,7 @@ function extractYoutubeMediaId(url: URL): string | null {
   return null;
 }
 
-export const YOUTUBE_STREAMING_SERVICE_DEFINITION = {
+export const YOUTUBE_SERVICE = {
   descriptor: {
     label: 'YouTube',
     accent: '#ff0033',
@@ -38,4 +38,4 @@ export const YOUTUBE_STREAMING_SERVICE_DEFINITION = {
   extractMediaId: extractYoutubeMediaId,
   isMediaIdValid: isSafeMediaId,
   buildCanonicalWatchUrl: (mediaId: string) => `https://www.youtube.com/watch?v=${mediaId}`,
-} satisfies StreamingServiceDefinition;
+} satisfies ServiceDefinition;

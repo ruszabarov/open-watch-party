@@ -1,10 +1,18 @@
 import { z } from 'zod';
-import { isStreamingServiceId, type StreamingServiceId } from './streaming-services';
-export type { StreamingServiceId } from './streaming-services';
+import { isServiceId, type ServiceId } from './streaming-services';
+export type { ServiceId } from './streaming-services';
 
 export const MAX_MEMBER_NAME_LENGTH = 64;
 export const MAX_TITLE_LENGTH = 256;
 export const MAX_PLAYBACK_POSITION_SEC = 48 * 60 * 60;
+
+// Shared so the server and the extension cannot drift on the wording.
+export const ACTIVE_ROOM_EXISTS_ERROR =
+  'Leave your current room before joining or creating another room.';
+
+// Raised when a freshly generated room code is already taken. Extremely rare;
+// the client transparently regenerates and retries when it sees this.
+export const ROOM_CODE_TAKEN_ERROR = 'Room code already in use.';
 
 const CONTROL_CHARACTERS_PATTERN = /\p{Cc}+/gu;
 
@@ -15,7 +23,7 @@ export interface PartyMember {
 }
 
 export interface PlaybackState {
-  streamingServiceId: StreamingServiceId;
+  serviceId: ServiceId;
   mediaId: string;
   title?: string;
   playing: boolean;
@@ -26,7 +34,7 @@ export interface PlaybackState {
 
 export interface PartySnapshot {
   roomCode: string;
-  streamingServiceId: StreamingServiceId;
+  serviceId: ServiceId;
   watchUrl: string;
   members: PartyMember[];
   playback: PlaybackState;
@@ -61,8 +69,8 @@ const roomCodeSchema = z
   .pipe(z.string().min(1));
 const memberIdSchema = z.string().trim().min(1);
 const mediaIdSchema = z.string().trim().min(1);
-const streamingServiceIdSchema = z.custom<StreamingServiceId>(
-  (value) => typeof value === 'string' && isStreamingServiceId(value),
+const serviceIdSchema = z.custom<ServiceId>(
+  (value) => typeof value === 'string' && isServiceId(value),
   { message: 'Unsupported streaming service id' },
 );
 const positionSchema = z.number().min(0).max(MAX_PLAYBACK_POSITION_SEC);
@@ -79,13 +87,11 @@ export const playbackDraftSchema = z.object({
   playing: z.boolean(),
 });
 
-export const playbackStateInputSchema = playbackDraftSchema;
-
 export const createRoomRequestSchema = z.object({
   memberId: memberIdSchema,
   memberName: memberNameSchema,
-  streamingServiceId: streamingServiceIdSchema,
-  initialPlayback: playbackStateInputSchema,
+  serviceId: serviceIdSchema,
+  initialPlayback: playbackDraftSchema,
 });
 
 export const joinRoomRequestSchema = z.object({
@@ -96,7 +102,6 @@ export const joinRoomRequestSchema = z.object({
 
 export const playbackUpdateRequestSchema = playbackDraftSchema.strict();
 
-export type PlaybackStateInput = z.output<typeof playbackStateInputSchema>;
 export type PlaybackUpdate = z.output<typeof playbackUpdateRequestSchema>;
 export type CreateRoomRequest = z.output<typeof createRoomRequestSchema>;
 export type JoinRoomRequest = z.output<typeof joinRoomRequestSchema>;
@@ -108,18 +113,33 @@ export interface RoomClosedEvent {
   reason: RoomClosedReason;
 }
 
-export interface ClientToServerEvents {
-  'room:create': (payload: CreateRoomRequest, acknowledge: Acknowledge<RoomResponse>) => void;
-  'room:join': (payload: JoinRoomRequest, acknowledge: Acknowledge<RoomResponse>) => void;
-  'room:leave': (acknowledge: Acknowledge<{ roomCode: string }>) => void;
-  'playback:update': (payload: PlaybackUpdate, acknowledge: Acknowledge<PartySnapshot>) => void;
+// Realtime transport is a JSON message envelope over a raw WebSocket. Every
+// request from the client carries an `rid` the server echoes back in its `ack`,
+// giving us request/response semantics without socket.io.
+const ridSchema = z.string().min(1);
+
+export const clientMessageSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('room:create'), rid: ridSchema, payload: createRoomRequestSchema }),
+  z.object({ type: z.literal('room:join'), rid: ridSchema, payload: joinRoomRequestSchema }),
+  z.object({ type: z.literal('room:leave'), rid: ridSchema }),
+  z.object({
+    type: z.literal('playback:update'),
+    rid: ridSchema,
+    payload: playbackUpdateRequestSchema,
+  }),
+]);
+
+export type ClientMessage = z.output<typeof clientMessageSchema>;
+
+export interface RoomLeaveResponse {
+  roomCode: string;
 }
 
-export interface ServerToClientEvents {
-  'room:state': (snapshot: PartySnapshot) => void;
-  'playback:state': (snapshot: PartySnapshot) => void;
-  'room:closed': (event: RoomClosedEvent) => void;
-}
+export type ServerMessage =
+  | { type: 'ack'; rid: string; result: OperationResult<unknown> }
+  | { type: 'room:state'; snapshot: PartySnapshot }
+  | { type: 'playback:state'; snapshot: PartySnapshot }
+  | { type: 'room:closed'; event: RoomClosedEvent };
 
 function sanitizeText(value: string, maxLength: number): string {
   return value.replace(CONTROL_CHARACTERS_PATTERN, '').trim().slice(0, maxLength);

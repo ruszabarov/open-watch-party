@@ -12,6 +12,7 @@ node_modules
 stats.html
 stats-*.json
 .wxt
+.partykit
 web-ext.config.ts
 apps/extension/.env
 apps/extension/.env.local

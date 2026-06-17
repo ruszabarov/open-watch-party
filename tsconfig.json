@@ -1,11 +1,11 @@
 {
-  "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ESNext", "DOM"],
+    "lib": ["ESNext"],
     "strict": true,
+    "noEmit": true,
     "allowUnusedLabels": false,
     "allowUnreachableCode": false,
     "exactOptionalPropertyTypes": true,

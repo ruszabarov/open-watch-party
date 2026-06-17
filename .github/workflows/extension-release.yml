@@ -28,12 +28,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: node scripts/validate-release-tag.mjs extension apps/extension/package.json extension-v
 
-      - name: Check extension
-        run: |
-          pnpm lint
-          pnpm format:check
-          pnpm --filter @open-watch-party/shared test
-          pnpm --filter @open-watch-party/extension check
+      - name: Check
+        run: pnpm check
 
       - name: Zip extensions
         run: |

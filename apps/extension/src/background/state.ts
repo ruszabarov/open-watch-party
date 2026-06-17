@@ -1,10 +1,10 @@
 import { storage } from '#imports';
-import type { PartySnapshot, StreamingServiceId } from '@open-watch-party/shared';
+import type { PartySnapshot, ServiceId } from '@open-watch-party/shared';
 
 export type SessionInfo = {
   readonly roomCode: string;
   readonly memberId: string;
-  readonly streamingServiceId: StreamingServiceId;
+  readonly serviceId: ServiceId;
 };
 
 export type ControlledTabInfo = {
@@ -17,7 +17,11 @@ export type BackgroundState = {
   readonly room: PartySnapshot | null;
   readonly controlledTab: ControlledTabInfo | null;
   readonly lastError: string | null;
+  // Bumped on every reported error so the popup can tell two identical
+  // messages apart and re-show one the user already dismissed.
+  readonly lastErrorSeq: number;
   readonly lastWarning: string | null;
+  readonly lastWarningSeq: number;
 };
 
 export const initialBackgroundState: BackgroundState = {
@@ -25,7 +29,9 @@ export const initialBackgroundState: BackgroundState = {
   room: null,
   controlledTab: null,
   lastError: null,
+  lastErrorSeq: 0,
   lastWarning: null,
+  lastWarningSeq: 0,
 };
 
 export const backgroundStateItem = storage.defineItem<BackgroundState>(
@@ -77,7 +83,7 @@ export async function updateSessionRoom(room: PartySnapshot): Promise<void> {
       session: {
         ...state.session,
         roomCode: room.roomCode,
-        streamingServiceId: room.streamingServiceId,
+        serviceId: room.serviceId,
       },
       room,
       lastWarning: null,
@@ -89,6 +95,7 @@ export async function reportBackgroundError(message: string): Promise<void> {
   return updateBackgroundState((state) => ({
     ...state,
     lastError: message,
+    lastErrorSeq: state.lastErrorSeq + 1,
   }));
 }
 
@@ -96,6 +103,7 @@ export async function setLastWarning(message: string | null): Promise<void> {
   return updateBackgroundState((state) => ({
     ...state,
     lastWarning: message,
+    lastWarningSeq: message === null ? state.lastWarningSeq : state.lastWarningSeq + 1,
   }));
 }
 

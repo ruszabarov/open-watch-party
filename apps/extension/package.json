@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@webext-core/messaging": "^2.3.0",
-    "socket.io-client": "^4.8.3",
+    "partysocket": "^1.2.0",
     "ts-pattern": "catalog:"
   },
   "devDependencies": {

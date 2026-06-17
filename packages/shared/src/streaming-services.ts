@@ -1,15 +1,15 @@
-import { NETFLIX_STREAMING_SERVICE_DEFINITION } from './streaming-services/netflix';
-import { YOUTUBE_STREAMING_SERVICE_DEFINITION } from './streaming-services/youtube';
+import { NETFLIX_SERVICE } from './streaming-services/netflix';
+import { YOUTUBE_SERVICE } from './streaming-services/youtube';
 
-export type StreamingServiceDescriptor = {
+export type ServiceDescriptor = {
   readonly label: string;
   readonly accent: string;
   readonly accentContrast: string;
   readonly glyph: string;
 };
 
-export type StreamingServiceDefinition = {
-  readonly descriptor: StreamingServiceDescriptor;
+export type ServiceDefinition = {
+  readonly descriptor: ServiceDescriptor;
   readonly contentMatches: readonly string[];
   matchesUrl(url: URL): boolean;
   extractMediaId(url: URL): string | null;
@@ -17,46 +17,44 @@ export type StreamingServiceDefinition = {
   buildCanonicalWatchUrl(mediaId: string): string;
 };
 
-export const STREAMING_SERVICE_DEFINITION_BY_ID = {
-  netflix: NETFLIX_STREAMING_SERVICE_DEFINITION,
-  youtube: YOUTUBE_STREAMING_SERVICE_DEFINITION,
-} satisfies Record<string, StreamingServiceDefinition>;
+export const SERVICE_BY_ID = {
+  netflix: NETFLIX_SERVICE,
+  youtube: YOUTUBE_SERVICE,
+} satisfies Record<string, ServiceDefinition>;
 
-export const STREAMING_SERVICE_DEFINITIONS = Object.values(STREAMING_SERVICE_DEFINITION_BY_ID);
+export const SERVICE_DEFINITIONS = Object.values(SERVICE_BY_ID);
 
-export type StreamingServiceId = keyof typeof STREAMING_SERVICE_DEFINITION_BY_ID;
-export type StreamingServiceUrlMatch = {
-  streamingServiceId: StreamingServiceId;
-  streamingService: StreamingServiceDefinition;
+export type ServiceId = keyof typeof SERVICE_BY_ID;
+export type ServiceUrlMatch = {
+  serviceId: ServiceId;
+  service: ServiceDefinition;
   isWatchPage: boolean;
 };
 
-export const SUPPORTED_STREAMING_SERVICES = Object.keys(STREAMING_SERVICE_DEFINITION_BY_ID);
+export const SUPPORTED_SERVICE_IDS = Object.keys(SERVICE_BY_ID);
 
-export function isStreamingServiceId(value: string): value is StreamingServiceId {
-  return value in STREAMING_SERVICE_DEFINITION_BY_ID;
+export function isServiceId(value: string): value is ServiceId {
+  return value in SERVICE_BY_ID;
 }
 
-export const SUPPORTED_STREAMING_SERVICE_DESCRIPTORS = STREAMING_SERVICE_DEFINITIONS.map(
-  (streamingService) => streamingService.descriptor,
+export const SUPPORTED_SERVICE_DESCRIPTORS = SERVICE_DEFINITIONS.map(
+  (service) => service.descriptor,
 );
 
-export const SUPPORTED_STREAMING_SERVICE_CONTENT_MATCHES = STREAMING_SERVICE_DEFINITIONS.flatMap(
-  (streamingService) => streamingService.contentMatches,
+export const SUPPORTED_SERVICE_CONTENT_MATCHES = SERVICE_DEFINITIONS.flatMap(
+  (service) => service.contentMatches,
 );
 
-export function findStreamingServiceDefinitionByUrl(
-  url: URL,
-): StreamingServiceUrlMatch | undefined {
-  for (const streamingServiceId of SUPPORTED_STREAMING_SERVICES) {
-    if (!isStreamingServiceId(streamingServiceId)) continue;
+export function findServiceByUrl(url: URL): ServiceUrlMatch | undefined {
+  for (const serviceId of SUPPORTED_SERVICE_IDS) {
+    if (!isServiceId(serviceId)) continue;
 
-    const streamingService = STREAMING_SERVICE_DEFINITION_BY_ID[streamingServiceId];
-    if (streamingService.matchesUrl(url)) {
+    const service = SERVICE_BY_ID[serviceId];
+    if (service.matchesUrl(url)) {
       return {
-        streamingServiceId,
-        streamingService,
-        isWatchPage: streamingService.extractMediaId(url) !== null,
+        serviceId,
+        service,
+        isWatchPage: service.extractMediaId(url) !== null,
       };
     }
   }

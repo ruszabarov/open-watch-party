@@ -76,9 +76,9 @@ class BackgroundController {
   }
 
   private async createRoomFromTab(tabId: number): Promise<void> {
-    const { streamingServiceId, playback } =
+    const { serviceId, playback } =
       await this.controlledTabService.requireControllableWatchTab(tabId);
-    await this.partySessionService.createRoom(tabId, streamingServiceId, playback);
+    await this.partySessionService.createRoom(tabId, serviceId, playback);
   }
 
   private async joinRoomFromTab(roomCode: string, tabId: number): Promise<void> {
