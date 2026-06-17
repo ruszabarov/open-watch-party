@@ -64,14 +64,12 @@ type PlaybackUpdateResult = {
 
 const DEFAULT_MAX_ROOMS = 1_000;
 const DEFAULT_ROOM_IDLE_TTL_MS = 6 * 60 * 60 * 1_000;
-const MAX_CONNECTIONS_PER_ADDRESS = 50;
 
 const log = logger.child({ scope: 'socket' });
 
 export class RealtimeSocketService {
   private readonly sessions = new SessionRegistry();
   private readonly store: RoomStore;
-  private readonly connectionsByAddress = new Map<string, number>();
 
   constructor(private readonly io: RealtimeServer) {
     this.store = createInMemoryRoomStore({
@@ -101,13 +99,6 @@ export class RealtimeSocketService {
   }
 
   readonly handleConnection = (socket: ConnectionSocket): void => {
-    const address = remoteAddress(socket);
-    if (address && !this.openConnection(address)) {
-      log.warn({ socketId: socket.id, address }, 'socket:connection_rejected');
-      socket.disconnect(true);
-      return;
-    }
-
     log.info({ socketId: socket.id }, 'socket:connected');
 
     socket.on('room:create', (payload, acknowledge) => {
@@ -133,10 +124,6 @@ export class RealtimeSocketService {
     });
 
     socket.on('disconnect', () => {
-      if (address) {
-        this.closeConnection(address);
-      }
-
       const session = this.sessions.get(socket.id);
       if (!session) {
         log.info({ socketId: socket.id }, 'socket:disconnected_without_session');
@@ -378,30 +365,6 @@ export class RealtimeSocketService {
     );
     this.io.sockets.sockets.get(replacedSocket.socketId)?.disconnect(true);
   }
-
-  private openConnection(address: string): boolean {
-    const current = this.connectionsByAddress.get(address) ?? 0;
-    if (current >= MAX_CONNECTIONS_PER_ADDRESS) {
-      return false;
-    }
-
-    this.connectionsByAddress.set(address, current + 1);
-    return true;
-  }
-
-  private closeConnection(address: string): void {
-    const current = this.connectionsByAddress.get(address) ?? 0;
-    if (current <= 1) {
-      this.connectionsByAddress.delete(address);
-      return;
-    }
-
-    this.connectionsByAddress.set(address, current - 1);
-  }
-}
-
-function remoteAddress(socket: ConnectionSocket): string | null {
-  return socket.handshake?.address ?? null;
 }
 
 function toRoomClosedReason(reason: RoomStoreRemovalReason): RoomClosedReason | null {
