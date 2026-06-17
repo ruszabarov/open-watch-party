@@ -25,6 +25,10 @@ function isAdShowing(player: Element | null): boolean {
   return isYoutubeAdPlayback(player?.getAttribute('class'));
 }
 
+function sendReport(report: WatchReport): void {
+  void sendMessage('content:watch-report', report).catch(() => undefined);
+}
+
 export function runYoutubeContentScript(ctx: ContentScriptContext): void {
   let activeVideo: HTMLVideoElement | null = null;
   let activePlayer: Element | null = null;
@@ -56,10 +60,6 @@ export function runYoutubeContentScript(ctx: ContentScriptContext): void {
       positionSec: Number(activeVideo.currentTime.toFixed(3)),
       playing: !activeVideo.paused,
     };
-  };
-
-  const sendReport = (report: WatchReport) => {
-    void sendMessage('content:watch-report', report).catch(() => undefined);
   };
 
   const sendPlaybackReport = () => {

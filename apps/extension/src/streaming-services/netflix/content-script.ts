@@ -31,6 +31,10 @@ function sendPlayerCommand(command: NetflixPlayerCommand): void {
   );
 }
 
+function sendReport(report: WatchReport): void {
+  void sendMessage('content:watch-report', report).catch(() => undefined);
+}
+
 export function runNetflixContentScript(ctx: ContentScriptContext): void {
   let activeVideo: HTMLVideoElement | null = null;
   let suppressUntil = 0;
@@ -60,10 +64,6 @@ export function runNetflixContentScript(ctx: ContentScriptContext): void {
       positionSec: activeVideo.currentTime,
       playing: !activeVideo.paused,
     };
-  };
-
-  const sendReport = (report: WatchReport) => {
-    void sendMessage('content:watch-report', report).catch(() => undefined);
   };
 
   const requestPlayerStatus = (): Promise<boolean | null> => {
