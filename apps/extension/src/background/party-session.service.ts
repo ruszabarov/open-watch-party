@@ -1,9 +1,13 @@
 import { browser } from 'wxt/browser';
-import { ACTIVE_ROOM_EXISTS_ERROR, normalizeRoomCode } from '@open-watch-party/shared';
+import {
+  ACTIVE_ROOM_EXISTS_ERROR,
+  createRoomCode,
+  normalizeRoomCode,
+  ROOM_CODE_TAKEN_ERROR,
+} from '@open-watch-party/shared';
 
 import type {
   CreateRoomRequest,
-  JoinRoomRequest,
   OperationResult,
   PartySnapshot,
   PlaybackUpdate,
@@ -26,7 +30,8 @@ import {
   updateSessionRoom,
 } from './state';
 
-const SERVER_URL = __DEFAULT_SERVER_URL__;
+const PARTYKIT_HOST = __DEFAULT_SERVER_URL__;
+const ROOM_CODE_ATTEMPTS = 5;
 
 export class PartySessionService {
   private connection: RealtimeConnection | null = null;
@@ -56,7 +61,7 @@ export class PartySessionService {
 
     const settings = await getSettings();
 
-    const response = await this.emitRoomCreate({
+    const response = await this.createRoomWithUniqueCode({
       memberId: await this.ensureMemberId(),
       memberName: settings.memberName,
       serviceId,
@@ -71,11 +76,14 @@ export class PartySessionService {
     await this.assertNoActiveSession();
     const settings = await getSettings();
 
-    const response = await this.emitRoomJoin({
-      roomCode: normalizeRoomCode(roomCode),
-      memberId: await this.ensureMemberId(),
-      memberName: settings.memberName,
-    });
+    const normalized = normalizeRoomCode(roomCode);
+    const response = this.unwrapAckResponse(
+      await this.ensureConnection(normalized).joinRoom({
+        roomCode: normalized,
+        memberId: await this.ensureMemberId(),
+        memberName: settings.memberName,
+      }),
+    );
 
     await this.applyRoomResponse(response);
     return response;
@@ -84,7 +92,7 @@ export class PartySessionService {
   async leaveRoom(): Promise<void> {
     if ((await getBackgroundState()).session && this.connection) {
       try {
-        await this.emitRoomLeave();
+        await this.connection.leaveRoom();
       } catch {
         // Best effort.
       }
@@ -94,9 +102,23 @@ export class PartySessionService {
     await leaveRoomState();
   }
 
+  // The room code is the PartyKit party id, so it is generated client-side. A
+  // collision is astronomically unlikely; if it happens the server rejects the
+  // create and we retry with a fresh code.
+  private async createRoomWithUniqueCode(payload: CreateRoomRequest): Promise<RoomResponse> {
+    for (let attempt = 0; attempt < ROOM_CODE_ATTEMPTS; attempt += 1) {
+      const result = await this.ensureConnection(createRoomCode()).createRoom(payload);
+      if (result.ok || result.error !== ROOM_CODE_TAKEN_ERROR) {
+        return this.unwrapAckResponse(result);
+      }
+    }
+
+    throw new Error('Could not find an available room code. Please try again.');
+  }
+
   private async sendPlaybackUpdate(update: PlaybackUpdate): Promise<void> {
     const state = await getBackgroundState();
-    if (!state.session) {
+    if (!state.session || !this.connection) {
       return;
     }
 
@@ -106,7 +128,7 @@ export class PartySessionService {
       return;
     }
 
-    const snapshot = await this.emitPlaybackUpdate(update);
+    const snapshot = this.unwrapAckResponse(await this.connection.updatePlayback(update));
     await updateSessionRoom(snapshot);
   }
 
@@ -123,12 +145,14 @@ export class PartySessionService {
     }
   }
 
-  private ensureConnection(): RealtimeConnection {
-    if (this.connection) {
+  private ensureConnection(roomCode: string): RealtimeConnection {
+    if (this.connection?.room === roomCode) {
       return this.connection;
     }
 
-    const connection = new RealtimeConnection(SERVER_URL);
+    this.connection?.disconnect();
+
+    const connection = new RealtimeConnection({ host: PARTYKIT_HOST, room: roomCode });
     this.connection = connection;
 
     connection.onConnectionError((error) => {
@@ -160,11 +184,13 @@ export class PartySessionService {
 
     try {
       const settings = await getSettings();
-      const response = await this.emitRoomJoin({
-        roomCode: session.roomCode,
-        memberId: session.memberId,
-        memberName: settings.memberName,
-      });
+      const response = this.unwrapAckResponse(
+        await this.ensureConnection(session.roomCode).joinRoom({
+          roomCode: session.roomCode,
+          memberId: session.memberId,
+          memberName: settings.memberName,
+        }),
+      );
 
       await this.applyRoomResponse(response, true);
     } catch (error) {
@@ -209,22 +235,6 @@ export class PartySessionService {
   private async applyIncomingPlaybackSnapshot(snapshot: PartySnapshot): Promise<void> {
     await updateSessionRoom(snapshot);
     this.options.onRoomSnapshotChanged();
-  }
-
-  private async emitRoomCreate(payload: CreateRoomRequest): Promise<RoomResponse> {
-    return this.unwrapAckResponse(await this.ensureConnection().createRoom(payload));
-  }
-
-  private async emitRoomJoin(payload: JoinRoomRequest): Promise<RoomResponse> {
-    return this.unwrapAckResponse(await this.ensureConnection().joinRoom(payload));
-  }
-
-  private async emitRoomLeave(): Promise<{ roomCode: string }> {
-    return this.unwrapAckResponse(await this.ensureConnection().leaveRoom());
-  }
-
-  private async emitPlaybackUpdate(update: PlaybackUpdate): Promise<PartySnapshot> {
-    return this.unwrapAckResponse(await this.ensureConnection().updatePlayback(update));
   }
 
   private closeConnection(): void {

@@ -30,7 +30,7 @@ export function normalizeRoomCode(roomCode: string): string {
 
 export function createRoomCode(): string {
   const values = new Uint32Array(ROOM_CODE_LENGTH);
-  globalThis.crypto.getRandomValues(values);
+  crypto.getRandomValues(values);
 
   return Array.from(values, (value) => {
     return ROOM_CODE_ALPHABET.charAt(value % ROOM_CODE_ALPHABET.length);

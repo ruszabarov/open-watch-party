@@ -10,6 +10,10 @@ export const MAX_PLAYBACK_POSITION_SEC = 48 * 60 * 60;
 export const ACTIVE_ROOM_EXISTS_ERROR =
   'Leave your current room before joining or creating another room.';
 
+// Raised when a freshly generated room code is already taken. Extremely rare;
+// the client transparently regenerates and retries when it sees this.
+export const ROOM_CODE_TAKEN_ERROR = 'Room code already in use.';
+
 const CONTROL_CHARACTERS_PATTERN = /\p{Cc}+/gu;
 
 export interface PartyMember {
@@ -109,18 +113,33 @@ export interface RoomClosedEvent {
   reason: RoomClosedReason;
 }
 
-export interface ClientToServerEvents {
-  'room:create': (payload: CreateRoomRequest, acknowledge: Acknowledge<RoomResponse>) => void;
-  'room:join': (payload: JoinRoomRequest, acknowledge: Acknowledge<RoomResponse>) => void;
-  'room:leave': (acknowledge: Acknowledge<{ roomCode: string }>) => void;
-  'playback:update': (payload: PlaybackUpdate, acknowledge: Acknowledge<PartySnapshot>) => void;
+// Realtime transport is a JSON message envelope over a raw WebSocket. Every
+// request from the client carries an `rid` the server echoes back in its `ack`,
+// giving us request/response semantics without socket.io.
+const ridSchema = z.string().min(1);
+
+export const clientMessageSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('room:create'), rid: ridSchema, payload: createRoomRequestSchema }),
+  z.object({ type: z.literal('room:join'), rid: ridSchema, payload: joinRoomRequestSchema }),
+  z.object({ type: z.literal('room:leave'), rid: ridSchema }),
+  z.object({
+    type: z.literal('playback:update'),
+    rid: ridSchema,
+    payload: playbackUpdateRequestSchema,
+  }),
+]);
+
+export type ClientMessage = z.output<typeof clientMessageSchema>;
+
+export interface RoomLeaveResponse {
+  roomCode: string;
 }
 
-export interface ServerToClientEvents {
-  'room:state': (snapshot: PartySnapshot) => void;
-  'playback:state': (snapshot: PartySnapshot) => void;
-  'room:closed': (event: RoomClosedEvent) => void;
-}
+export type ServerMessage =
+  | { type: 'ack'; rid: string; result: OperationResult<unknown> }
+  | { type: 'room:state'; snapshot: PartySnapshot }
+  | { type: 'playback:state'; snapshot: PartySnapshot }
+  | { type: 'room:closed'; event: RoomClosedEvent };
 
 function sanitizeText(value: string, maxLength: number): string {
   return value.replace(CONTROL_CHARACTERS_PATTERN, '').trim().slice(0, maxLength);
