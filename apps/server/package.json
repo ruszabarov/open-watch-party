@@ -4,18 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "partykit dev",
-    "deploy": "partykit deploy",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
     "release": "cd ../.. && release-it --config .release-it.server.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
   "dependencies": {
-    "@open-watch-party/shared": "workspace:*"
+    "@open-watch-party/shared": "workspace:*",
+    "partyserver": "^0.5.8"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260616.1",
-    "partykit": "^0.0.115",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "wrangler": "^4.101.0"
   }
 }

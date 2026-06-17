@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "open-watch-party",
+  "main": "src/server.ts",
+  "compatibility_date": "2026-06-17",
+  "routes": [
+    {
+      "pattern": "watch.ruszabarov.com",
+      "custom_domain": true,
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "main",
+        "class_name": "WatchPartyServer",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["WatchPartyServer"],
+    },
+  ],
+}

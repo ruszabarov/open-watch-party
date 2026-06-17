@@ -1,4 +1,4 @@
-import type * as Party from 'partykit/server';
+import { routePartykitRequest, Server, type Connection } from 'partyserver';
 import {
   applyPlaybackUpdate,
   clientMessageSchema,
@@ -34,7 +34,11 @@ interface ConnectionState {
   memberId: string;
 }
 
-export default class WatchPartyServer implements Party.Server {
+export interface Env {
+  main: DurableObjectNamespace<WatchPartyServer>;
+}
+
+export class WatchPartyServer extends Server<Env> {
   /** The whole room lives in one Party; rebuilt from storage in onStart. */
   private state: RoomState | null = null;
   /** memberId → id of the connection currently representing that member. */
@@ -42,13 +46,14 @@ export default class WatchPartyServer implements Party.Server {
   /** memberId → playback-update token bucket (survives reconnects). */
   private readonly buckets = new Map<string, TokenBucket>();
 
-  constructor(readonly party: Party.Room) {}
-
-  async onStart(): Promise<void> {
-    this.state = (await this.party.storage.get<RoomState>(STORAGE_KEY)) ?? null;
+  override async onStart(): Promise<void> {
+    this.state = (await this.ctx.storage.get<RoomState>(STORAGE_KEY)) ?? null;
   }
 
-  async onMessage(raw: string | ArrayBuffer, sender: Party.Connection): Promise<void> {
+  override async onMessage(
+    sender: Connection<ConnectionState>,
+    raw: string | ArrayBuffer,
+  ): Promise<void> {
     const parsed = parseClientMessage(raw);
     if (!parsed.ok) {
       if (parsed.rid) {
@@ -78,24 +83,29 @@ export default class WatchPartyServer implements Party.Server {
     }
   }
 
-  async onClose(connection: Party.Connection): Promise<void> {
+  override async onClose(
+    connection: Connection<ConnectionState>,
+    _code: number,
+    _reason: string,
+    _wasClean: boolean,
+  ): Promise<void> {
     await this.handleDisconnect(connection);
   }
 
-  async onError(connection: Party.Connection): Promise<void> {
+  override async onError(connection: Connection<ConnectionState>, _error: unknown): Promise<void> {
     await this.handleDisconnect(connection);
   }
 
-  async onAlarm(): Promise<void> {
-    const room = this.state ?? (await this.party.storage.get<RoomState>(STORAGE_KEY)) ?? null;
+  override async onAlarm(): Promise<void> {
+    const room = this.state ?? (await this.ctx.storage.get<RoomState>(STORAGE_KEY)) ?? null;
     if (room) {
-      this.broadcast({
+      this.broadcastMessage({
         type: 'room:closed',
         event: { roomCode: room.roomCode, reason: 'expired' },
       });
     }
 
-    for (const connection of this.party.getConnections()) {
+    for (const connection of this.getConnections()) {
       connection.close();
     }
 
@@ -107,14 +117,14 @@ export default class WatchPartyServer implements Party.Server {
 
   private async handleCreate(
     message: Extract<ClientMessage, { type: 'room:create' }>,
-    sender: Party.Connection,
+    sender: Connection<ConnectionState>,
   ): Promise<void> {
     if (this.state) {
       this.ack(sender, message.rid, failure(ROOM_CODE_TAKEN_ERROR));
       return;
     }
 
-    const room = createRoomState(this.party.id, message.payload);
+    const room = createRoomState(this.name, message.payload);
     upsertRoomMember(room, message.payload.memberId, message.payload.memberName);
     this.state = room;
     await this.saveRoom();
@@ -129,7 +139,7 @@ export default class WatchPartyServer implements Party.Server {
 
   private async handleJoin(
     message: Extract<ClientMessage, { type: 'room:join' }>,
-    sender: Party.Connection,
+    sender: Connection<ConnectionState>,
   ): Promise<void> {
     if (!this.state) {
       this.ack(sender, message.rid, failure(ROOM_NOT_FOUND_ERROR));
@@ -142,12 +152,12 @@ export default class WatchPartyServer implements Party.Server {
 
     const snapshot = toPartySnapshot(this.state);
     this.ack(sender, message.rid, success({ memberId: message.payload.memberId, snapshot }));
-    this.broadcast({ type: 'room:state', snapshot }, sender.id);
+    this.broadcastMessage({ type: 'room:state', snapshot }, sender.id);
   }
 
   private async handleLeave(
     message: Extract<ClientMessage, { type: 'room:leave' }>,
-    sender: Party.Connection,
+    sender: Connection<ConnectionState>,
   ): Promise<void> {
     const memberId = connectionMemberId(sender);
     if (!memberId || !this.state) {
@@ -164,7 +174,7 @@ export default class WatchPartyServer implements Party.Server {
 
   private async handlePlayback(
     message: Extract<ClientMessage, { type: 'playback:update' }>,
-    sender: Party.Connection,
+    sender: Connection<ConnectionState>,
   ): Promise<void> {
     const memberId = connectionMemberId(sender);
     if (!memberId) {
@@ -192,10 +202,10 @@ export default class WatchPartyServer implements Party.Server {
 
     const snapshot = toPartySnapshot(this.state);
     this.ack(sender, message.rid, success(snapshot));
-    this.broadcast({ type: 'playback:state', snapshot }, sender.id);
+    this.broadcastMessage({ type: 'playback:state', snapshot }, sender.id);
   }
 
-  private async handleDisconnect(connection: Party.Connection): Promise<void> {
+  private async handleDisconnect(connection: Connection<ConnectionState>): Promise<void> {
     const memberId = connectionMemberId(connection);
     if (!memberId) {
       return;
@@ -225,13 +235,13 @@ export default class WatchPartyServer implements Party.Server {
     }
 
     await this.saveRoom();
-    this.broadcast({ type: 'room:state', snapshot: toPartySnapshot(this.state) });
+    this.broadcastMessage({ type: 'room:state', snapshot: toPartySnapshot(this.state) });
   }
 
-  private trackMember(connection: Party.Connection, memberId: string): void {
+  private trackMember(connection: Connection<ConnectionState>, memberId: string): void {
     const previousConnectionId = this.memberConnections.get(memberId);
     if (previousConnectionId && previousConnectionId !== connection.id) {
-      this.party.getConnection(previousConnectionId)?.close();
+      this.getConnection(previousConnectionId)?.close();
     }
 
     this.memberConnections.set(memberId, connection.id);
@@ -274,23 +284,33 @@ export default class WatchPartyServer implements Party.Server {
       return;
     }
 
-    await this.party.storage.put(STORAGE_KEY, this.state);
-    await this.party.storage.setAlarm(Date.now() + ROOM_IDLE_TTL_MS);
+    await this.ctx.storage.put(STORAGE_KEY, this.state);
+    await this.ctx.storage.setAlarm(Date.now() + ROOM_IDLE_TTL_MS);
   }
 
   private async clearRoom(): Promise<void> {
-    await this.party.storage.deleteAll();
-    await this.party.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+    await this.ctx.storage.deleteAlarm();
   }
 
-  private ack(connection: Party.Connection, rid: string, result: OperationResult<unknown>): void {
+  private ack(
+    connection: Connection<ConnectionState>,
+    rid: string,
+    result: OperationResult<unknown>,
+  ): void {
     connection.send(JSON.stringify({ type: 'ack', rid, result } satisfies ServerMessage));
   }
 
-  private broadcast(message: ServerMessage, ...without: string[]): void {
-    this.party.broadcast(JSON.stringify(message), without);
+  private broadcastMessage(message: ServerMessage, ...without: string[]): void {
+    this.broadcast(JSON.stringify(message), without);
   }
 }
+
+export default {
+  async fetch(request, env): Promise<Response> {
+    return (await routePartykitRequest(request, env)) ?? new Response('Not found', { status: 404 });
+  },
+} satisfies ExportedHandler<Env>;
 
 type ParseResult = { ok: true; message: ClientMessage } | { ok: false; rid: string | null };
 
@@ -321,8 +341,8 @@ function extractRid(json: unknown): string | null {
   return null;
 }
 
-function connectionMemberId(connection: Party.Connection): string | null {
-  return (connection.state as ConnectionState | null)?.memberId ?? null;
+function connectionMemberId(connection: Connection<ConnectionState>): string | null {
+  return connection.state?.memberId ?? null;
 }
 
 function success<T>(data: T): OperationResult<T> {

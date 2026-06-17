@@ -16,7 +16,7 @@ Repository: https://github.com/ruszabarov/open-watch-party
 - Realtime play, pause, seek, and playback-state sync
 - Room-based watch parties with shareable invite codes
 - Built for supported watch pages
-- Realtime backend powered by PartyKit
+- Realtime backend powered by PartyServer on Cloudflare Workers
 
 ## Supported Streaming Services
 
@@ -34,7 +34,7 @@ streaming service metadata plus an extension-side player integration.
 This repository is a pnpm workspace:
 
 - `apps/extension`: WXT + Svelte browser extension
-- `apps/server`: PartyKit realtime backend (one party instance per room)
+- `apps/server`: PartyServer realtime backend (one Durable Object instance per room)
 - `packages/shared`: shared protocol types and room logic
 - `docs/store-listings.md`: reusable browser-store listing copy
 
@@ -86,9 +86,9 @@ xcrun safari-web-extension-converter apps/extension/.output/safari-mv2 \
 Copy [apps/extension/.env.example](apps/extension/.env.example) to
 `apps/extension/.env` and set:
 
-- `SERVER_URL`: PartyKit host the extension connects to (e.g.
-  `open-watch-party.<user>.partykit.dev`; defaults to `localhost:1999` for local
-  development). A leading `http(s)://` is stripped automatically.
+- `SERVER_URL`: realtime backend host the extension connects to (for example,
+  `watch.ruszabarov.com`; defaults to `localhost:1999` for local development).
+  A leading `http(s)://` is stripped automatically.
 
 ## Adding A Streaming Service
 
@@ -107,10 +107,10 @@ and store listing improvements are welcome.
 
 ## Backend Notes
 
-The realtime backend is a [PartyKit](https://docs.partykit.io/) server. Each
-room is an isolated party instance addressed by its room code, with state kept
-in the party and persisted to its storage. Deploy it with `partykit deploy`
-(from `apps/server`, or via `pnpm release:server`).
+The realtime backend is a [PartyServer](https://github.com/threepointone/partyserver)
+Cloudflare Worker. Each room is an isolated Durable Object instance addressed by
+its room code, with state persisted to Durable Object storage. Deploy it with
+`wrangler deploy` from `apps/server`, or via `pnpm release:server`.
 
 Keep these constraints in mind:
 

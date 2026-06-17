@@ -1,6 +1,0 @@
-{
-  "$schema": "https://www.partykit.io/schema.json",
-  "name": "open-watch-party",
-  "main": "src/server.ts",
-  "compatibilityDate": "2026-06-17"
-}
