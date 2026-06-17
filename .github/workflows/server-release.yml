@@ -28,7 +28,7 @@ jobs:
         run: pnpm check
 
       - name: Deploy to PartyKit
-        run: pnpm --filter @open-watch-party/server deploy
+        run: pnpm --filter @open-watch-party/server run deploy
         env:
           PARTYKIT_TOKEN: ${{ secrets.PARTYKIT_TOKEN }}
           PARTYKIT_LOGIN: ${{ secrets.PARTYKIT_LOGIN }}
