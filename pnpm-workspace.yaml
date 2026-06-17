@@ -4,6 +4,7 @@ packages:
 allowBuilds:
   esbuild: true
   spawn-sync: true
+  workerd: true
 
 catalogs:
   default:
