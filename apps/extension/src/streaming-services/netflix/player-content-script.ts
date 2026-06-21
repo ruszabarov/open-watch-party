@@ -21,42 +21,26 @@ function getVideo(): HTMLVideoElement | null {
   return document.querySelector<HTMLVideoElement>('video');
 }
 
-function applyViaApi(command: NetflixPlayerCommand): boolean {
-  try {
-    const player = getNetflixPlayer();
-    if (!player) return false;
-
-    if (command.positionMs !== undefined) {
-      player.seek(command.positionMs);
-    }
-
-    if (command.playing) {
-      player.play();
-    } else {
-      player.pause();
-    }
-
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function applyViaVideoElement(command: NetflixPlayerCommand): void {
+// Seeks go through Netflix's internal player (a raw currentTime write gets
+// reverted by its ABR pipeline). Play/pause go through the <video> element so
+// Netflix's own UI controller stays in sync and its controls keep responding.
+function applyCommand(command: NetflixPlayerCommand): void {
   const video = getVideo();
   if (!video) return;
+
+  if (command.positionMs !== undefined) {
+    try {
+      getNetflixPlayer()?.seek(command.positionMs);
+    } catch {
+      // Internal player unavailable; leave the position untouched.
+    }
+  }
 
   if (command.playing && video.paused) {
     void video.play().catch(() => {});
   } else if (!command.playing && !video.paused) {
     video.pause();
   }
-}
-
-function applyCommand(command: NetflixPlayerCommand): void {
-  if (applyViaApi(command)) return;
-
-  applyViaVideoElement(command);
 }
 
 export function runNetflixPlayerContentScript(): void {
