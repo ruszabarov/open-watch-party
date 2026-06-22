@@ -1,14 +1,26 @@
 import { browser } from 'wxt/browser';
 import type { PartySnapshot, PlaybackUpdate, ServiceId } from '@open-watch-party/shared';
-import { sendMessage, type WatchReport, type WatchReportResult } from '../messaging';
+import {
+  sendMessage,
+  type PlaybackApplyTarget,
+  type WatchReport,
+  type WatchReportResult,
+} from '../messaging';
 import { findServiceByUrl, getServiceDefinition } from '../streaming-services/catalog';
+import { PlaybackSyncEngine, toPlaybackUpdate } from './playback-sync';
 import { clearControlledTab, getBackgroundState, setControlledTab, setLastWarning } from './state';
 
 function isServiceUrl(definition: { matchesUrl(url: URL): boolean }, rawUrl: string): boolean {
   return URL.canParse(rawUrl) && definition.matchesUrl(new URL(rawUrl));
 }
 
+const LOCAL_UPDATE_RETRY_MS = 1_000;
+
 export class ControlledTabService {
+  private readonly playbackSync = new PlaybackSyncEngine();
+  private remoteApplyTimer: ReturnType<typeof setTimeout> | null = null;
+  private localUpdateRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(
     private readonly options: {
       onControlledTabClosed: () => void;
@@ -30,6 +42,7 @@ export class ControlledTabService {
     const state = await getBackgroundState();
     const room = state.room;
     if (!room) {
+      this.resetPlaybackSync();
       return 'ignored';
     }
 
@@ -51,7 +64,32 @@ export class ControlledTabService {
       mediaId: report.mediaId,
     });
 
-    return this.options.onControlledTabPlaybackReady(toPlaybackUpdate(report));
+    return this.applySyncDecision(controlledTab.tabId, this.playbackSync.handleObservation(report));
+  }
+
+  private async applySyncDecision(
+    tabId: number,
+    decision: ReturnType<PlaybackSyncEngine['handleObservation']>,
+  ): Promise<WatchReportResult> {
+    switch (decision.action) {
+      case 'ignore':
+        return 'ignored';
+      case 'reapply-target':
+        this.sendApplyTarget(tabId, decision.target);
+        return 'ignored';
+      case 'send-update': {
+        const result = await this.options.onControlledTabPlaybackReady(decision.update);
+        const resultApplied = this.playbackSync.markLocalUpdateResult(decision.update, result);
+        if (!resultApplied) return 'ignored';
+
+        if (result === 'retry') {
+          this.scheduleLocalUpdateRetry(decision.update);
+        } else {
+          this.clearLocalUpdateRetryTimer();
+        }
+        return result;
+      }
+    }
   }
 
   async applySnapshotToControlledTab(): Promise<void> {
@@ -64,15 +102,14 @@ export class ControlledTabService {
       return;
     }
 
-    void sendMessage('party:apply-snapshot', room, { tabId: controlledTab.tabId }).catch(
-      () => undefined,
-    );
+    this.sendApplyTarget(controlledTab.tabId, this.playbackSync.beginRemoteApply(room));
     await setLastWarning(null);
   }
 
   async navigateControlledTabToRoom(tabId: number, watchUrl: string, active = true): Promise<void> {
     if ((await getBackgroundState()).controlledTab?.tabId === tabId) {
       await clearControlledTab();
+      this.resetPlaybackSync();
     }
     await setLastWarning(null);
 
@@ -126,7 +163,7 @@ export class ControlledTabService {
       return 'ignored';
     }
 
-    void sendMessage('party:apply-snapshot', room, { tabId }).catch(() => undefined);
+    this.sendApplyTarget(tabId, this.playbackSync.beginRemoteApply(room));
     await setControlledTab({ tabId, mediaId: report.mediaId });
     await setLastWarning(null);
     return 'accepted';
@@ -150,7 +187,82 @@ export class ControlledTabService {
     }
 
     await clearControlledTab();
+    this.resetPlaybackSync();
     this.options.onControlledTabClosed();
+  }
+
+  private sendApplyTarget(tabId: number, target: PlaybackApplyTarget): void {
+    this.clearLocalUpdateRetryTimer();
+    void sendMessage('party:apply-playback-target', target, { tabId }).catch(() => undefined);
+    this.scheduleRemoteApplyVerification(tabId, target.commandId);
+  }
+
+  private scheduleRemoteApplyVerification(tabId: number, commandId: string): void {
+    this.clearRemoteApplyTimer();
+
+    const timer = this.playbackSync.getRemoteApplyTimer();
+    if (!timer || timer.commandId !== commandId) return;
+
+    this.remoteApplyTimer = setTimeout(
+      () => {
+        this.remoteApplyTimer = null;
+        void this.verifyRemoteApply(tabId, commandId);
+      },
+      Math.max(0, timer.deadlineMs - Date.now()),
+    );
+  }
+
+  private async verifyRemoteApply(tabId: number, commandId: string): Promise<void> {
+    if (!this.playbackSync.isRemoteApplyCurrent(commandId)) return;
+
+    const report = await this.requestWatchReportFromTab(tabId);
+    if (!this.playbackSync.isRemoteApplyCurrent(commandId)) return;
+
+    if (report) {
+      await this.handleWatchReport(tabId, report);
+      return;
+    }
+
+    await this.applySyncDecision(tabId, this.playbackSync.handleRemoteApplyTimeout());
+  }
+
+  private scheduleLocalUpdateRetry(update: PlaybackUpdate): void {
+    this.clearLocalUpdateRetryTimer();
+
+    this.localUpdateRetryTimer = setTimeout(() => {
+      this.localUpdateRetryTimer = null;
+      void this.retryLocalUpdate(update);
+    }, LOCAL_UPDATE_RETRY_MS);
+  }
+
+  private async retryLocalUpdate(update: PlaybackUpdate): Promise<void> {
+    if (!this.playbackSync.isPendingLocalUpdate(update)) return;
+
+    const result = await this.options.onControlledTabPlaybackReady(update);
+    const resultApplied = this.playbackSync.markLocalUpdateResult(update, result);
+    if (resultApplied && result === 'retry' && this.playbackSync.isPendingLocalUpdate(update)) {
+      this.scheduleLocalUpdateRetry(update);
+    }
+  }
+
+  private resetPlaybackSync(): void {
+    this.clearRemoteApplyTimer();
+    this.clearLocalUpdateRetryTimer();
+    this.playbackSync.reset();
+  }
+
+  private clearRemoteApplyTimer(): void {
+    if (!this.remoteApplyTimer) return;
+
+    clearTimeout(this.remoteApplyTimer);
+    this.remoteApplyTimer = null;
+  }
+
+  private clearLocalUpdateRetryTimer(): void {
+    if (!this.localUpdateRetryTimer) return;
+
+    clearTimeout(this.localUpdateRetryTimer);
+    this.localUpdateRetryTimer = null;
   }
 
   private async readWatchTabMediaId(tabId: number, serviceId: ServiceId): Promise<string | null> {
@@ -162,13 +274,4 @@ export class ControlledTabService {
 
     return match.service.extractMediaId(new URL(tab.url!));
   }
-}
-
-function toPlaybackUpdate(report: WatchReport): PlaybackUpdate {
-  return {
-    mediaId: report.mediaId,
-    title: report.title ?? '',
-    positionSec: report.positionSec,
-    playing: report.playing,
-  };
 }

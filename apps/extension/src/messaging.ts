@@ -1,6 +1,6 @@
 import { defineExtensionMessaging } from '@webext-core/messaging';
 
-import type { PartySnapshot, ServiceId } from '@open-watch-party/shared';
+import type { PlaybackUpdate, ServiceId } from '@open-watch-party/shared';
 
 export interface CreateRoomRequest {
   tabId: number;
@@ -21,10 +21,16 @@ export type WatchReport = {
 
 export type WatchReportResult = 'accepted' | 'ignored' | 'retry';
 
+export type PlaybackApplyTarget = {
+  commandId: string;
+  serviceId: ServiceId;
+  playback: PlaybackUpdate;
+};
+
 export interface ExtensionProtocolMap {
   'content:watch-report': (payload: WatchReport) => WatchReportResult;
   'party:request-watch-report': () => WatchReport | null;
-  'party:apply-snapshot': (payload: PartySnapshot) => void;
+  'party:apply-playback-target': (payload: PlaybackApplyTarget) => void;
   'popup:create-room': (payload: CreateRoomRequest) => void;
   'popup:join-room': (payload: JoinRoomRequest) => void;
   'popup:leave-room': () => void;

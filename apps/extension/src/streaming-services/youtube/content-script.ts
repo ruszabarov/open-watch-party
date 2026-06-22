@@ -33,7 +33,7 @@ export function runYoutubeContentScript(ctx: ContentScriptContext): void {
   let activeVideo: HTMLVideoElement | null = null;
   let activePlayer: Element | null = null;
   let wasAdShowing = false;
-  let suppressUntil = 0;
+  let adSuppressUntil = 0;
   let pendingFrame: number | null = null;
 
   const readMediaId = (): string | null => {
@@ -47,7 +47,7 @@ export function runYoutubeContentScript(ctx: ContentScriptContext): void {
     if (
       mediaId === null ||
       !isVideoTimelineReady(activeVideo) ||
-      performance.now() < suppressUntil ||
+      performance.now() < adSuppressUntil ||
       isAdShowing(activePlayer)
     ) {
       return null;
@@ -99,7 +99,7 @@ export function runYoutubeContentScript(ctx: ContentScriptContext): void {
 
     const adShowing = isAdShowing(activePlayer);
     if (wasAdShowing && !adShowing) {
-      suppressUntil = performance.now() + SUPPRESSION_MS;
+      adSuppressUntil = performance.now() + SUPPRESSION_MS;
     }
     wasAdShowing = adShowing;
 
@@ -128,11 +128,10 @@ export function runYoutubeContentScript(ctx: ContentScriptContext): void {
   );
 
   ctx.onInvalidated(
-    onMessage('party:apply-snapshot', ({ data }) => {
-      if (!activeVideo || readMediaId() === null) return;
+    onMessage('party:apply-playback-target', ({ data }) => {
+      if (data.serviceId !== 'youtube') return;
+      if (!activeVideo || readMediaId() !== data.playback.mediaId) return;
       if (isAdShowing(activePlayer)) return;
-
-      suppressUntil = performance.now() + SUPPRESSION_MS;
 
       const { positionSec, playing } = data.playback;
       if (Math.abs(activeVideo.currentTime - positionSec) > SEEK_THRESHOLD_SEC) {
