@@ -19,8 +19,10 @@ export type WatchReport = {
   playing: boolean;
 };
 
+export type WatchReportResult = 'accepted' | 'ignored' | 'retry';
+
 export interface ExtensionProtocolMap {
-  'content:watch-report': (payload: WatchReport) => void;
+  'content:watch-report': (payload: WatchReport) => WatchReportResult;
   'party:request-watch-report': () => WatchReport | null;
   'party:apply-snapshot': (payload: PartySnapshot) => void;
   'popup:create-room': (payload: CreateRoomRequest) => void;

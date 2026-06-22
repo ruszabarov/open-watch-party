@@ -26,9 +26,8 @@ class BackgroundController {
       onControlledTabClosed: () => {
         this.leaveRoomAfterControlledTabClosed();
       },
-      onControlledTabPlaybackReady: (playback) => {
-        this.partySessionService.updateRoomPlaybackFromControlledTab(playback);
-      },
+      onControlledTabPlaybackReady: (playback) =>
+        this.partySessionService.updateRoomPlaybackFromControlledTab(playback),
     });
   }
 
@@ -97,8 +96,10 @@ class BackgroundController {
   private registerContentHandlers(): void {
     onMessage('content:watch-report', async ({ data, sender }) => {
       if (sender.tab?.id !== undefined) {
-        await this.controlledTabService.handleWatchReport(sender.tab.id, data);
+        return this.controlledTabService.handleWatchReport(sender.tab.id, data);
       }
+
+      return 'ignored';
     });
   }
 }

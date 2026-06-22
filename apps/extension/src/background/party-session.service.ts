@@ -18,6 +18,7 @@ import type {
 } from '@open-watch-party/shared';
 
 import { getErrorMessage } from '~/utils/errors.js';
+import type { WatchReportResult } from '../messaging';
 import { getSettings } from '../storage/settings';
 import { RealtimeConnection } from './connection.service';
 import {
@@ -42,10 +43,13 @@ export class PartySessionService {
     },
   ) {}
 
-  updateRoomPlaybackFromControlledTab(update: PlaybackUpdate): void {
-    void this.sendPlaybackUpdate(update).catch((error) => {
-      void reportBackgroundError(getErrorMessage(error));
-    });
+  async updateRoomPlaybackFromControlledTab(update: PlaybackUpdate): Promise<WatchReportResult> {
+    try {
+      return await this.sendPlaybackUpdate(update);
+    } catch (error) {
+      await reportBackgroundError(getErrorMessage(error));
+      return 'retry';
+    }
   }
 
   async resumeStoredSession(): Promise<void> {
@@ -116,20 +120,25 @@ export class PartySessionService {
     throw new Error('Could not find an available room code. Please try again.');
   }
 
-  private async sendPlaybackUpdate(update: PlaybackUpdate): Promise<void> {
+  private async sendPlaybackUpdate(update: PlaybackUpdate): Promise<WatchReportResult> {
     const state = await getBackgroundState();
-    if (!state.session || !this.connection) {
-      return;
+    if (!state.session) {
+      return 'ignored';
+    }
+
+    if (!this.connection) {
+      return 'retry';
     }
 
     const controlledMediaId = state.controlledTab?.mediaId ?? null;
     if (controlledMediaId !== null && controlledMediaId !== update.mediaId) {
       await setLastWarning('Local media no longer matches the active room.');
-      return;
+      return 'ignored';
     }
 
     const snapshot = this.unwrapAckResponse(await this.connection.updatePlayback(update));
     await updateSessionRoom(snapshot);
+    return 'accepted';
   }
 
   private async ensureMemberId(): Promise<string> {

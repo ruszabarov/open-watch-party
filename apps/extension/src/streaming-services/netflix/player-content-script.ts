@@ -7,6 +7,18 @@ import {
 } from './player-rpc';
 import type { NetflixPlayer } from './window';
 
+export const NETFLIX_PLAYER_VIDEO_RECONCILE_DELAY_MS = 150;
+
+type NetflixPlaybackVideo = Pick<HTMLVideoElement, 'currentTime' | 'paused' | 'pause' | 'play'>;
+
+type NetflixPlayerCommandOptions = {
+  getPlayer?: () => NetflixPlayer | null;
+  getVideo?: () => NetflixPlaybackVideo | null;
+  schedule?: (callback: () => void, delayMs: number) => void;
+};
+
+let commandGeneration = 0;
+
 function getNetflixPlayer(): NetflixPlayer | null {
   try {
     const videoPlayer = window.netflix?.appContext?.state?.playerApp?.getAPI?.().videoPlayer;
@@ -21,26 +33,102 @@ function getVideo(): HTMLVideoElement | null {
   return document.querySelector<HTMLVideoElement>('video');
 }
 
-// Seeks go through Netflix's internal player (a raw currentTime write gets
-// reverted by its ABR pipeline). Play/pause go through the <video> element so
-// Netflix's own UI controller stays in sync and its controls keep responding.
-function applyCommand(command: NetflixPlayerCommand): void {
-  const video = getVideo();
-  if (!video) return;
+function readTarget<T>(read: () => T | null): T | null {
+  try {
+    return read();
+  } catch {
+    return null;
+  }
+}
 
-  if (command.positionMs !== undefined) {
+function applyViaApi(command: NetflixPlayerCommand, player: NetflixPlayer): boolean {
+  try {
+    if (command.positionMs !== undefined) {
+      player.seek(command.positionMs);
+    }
+
+    if (command.playing) {
+      player.play();
+    } else {
+      player.pause();
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function applySeekViaVideoElement(
+  command: NetflixPlayerCommand,
+  video: NetflixPlaybackVideo,
+): void {
+  if (command.positionMs === undefined) return;
+
+  const positionSec = command.positionMs / 1000;
+  if (!Number.isFinite(positionSec)) return;
+
+  try {
+    video.currentTime = positionSec;
+  } catch {
+    // Netflix may reject direct timeline writes; this is only a fallback.
+  }
+}
+
+function applyPlaybackViaVideoElement(
+  command: NetflixPlayerCommand,
+  video: NetflixPlaybackVideo,
+): void {
+  if (command.playing && video.paused) {
     try {
-      getNetflixPlayer()?.seek(command.positionMs);
+      void video.play().catch(() => undefined);
     } catch {
-      // Internal player unavailable; leave the position untouched.
+      // Best effort; Netflix's internal player is the authoritative path.
+    }
+  } else if (!command.playing && !video.paused) {
+    try {
+      video.pause();
+    } catch {
+      // Best effort.
     }
   }
+}
 
-  if (command.playing && video.paused) {
-    void video.play().catch(() => {});
-  } else if (!command.playing && !video.paused) {
-    video.pause();
+function applyViaVideoElement(command: NetflixPlayerCommand, video: NetflixPlaybackVideo): void {
+  applySeekViaVideoElement(command, video);
+  applyPlaybackViaVideoElement(command, video);
+}
+
+function defaultSchedule(callback: () => void, delayMs: number): void {
+  window.setTimeout(callback, delayMs);
+}
+
+// Netflix's player API is authoritative for sync, but a delayed video-element
+// reconcile keeps the page controls from getting stuck if the API lags behind.
+export function applyNetflixPlayerCommand(
+  command: NetflixPlayerCommand,
+  options: NetflixPlayerCommandOptions = {},
+): void {
+  const currentCommandGeneration = (commandGeneration += 1);
+  const readPlayer = options.getPlayer ?? getNetflixPlayer;
+  const readVideo = options.getVideo ?? getVideo;
+  const player = readTarget(readPlayer);
+
+  if (player && applyViaApi(command, player)) {
+    const schedule = options.schedule ?? defaultSchedule;
+    schedule(() => {
+      if (currentCommandGeneration !== commandGeneration) return;
+
+      const video = readTarget(readVideo);
+      if (video) applyPlaybackViaVideoElement(command, video);
+    }, NETFLIX_PLAYER_VIDEO_RECONCILE_DELAY_MS);
+    return;
   }
+
+  const video = readTarget(readVideo);
+  if (!video) return;
+
+  applyViaVideoElement(command, video);
 }
 
 export function runNetflixPlayerContentScript(): void {
@@ -55,7 +143,7 @@ export function runNetflixPlayerContentScript(): void {
     }
 
     if ('command' in data && data.command) {
-      applyCommand(data.command);
+      applyNetflixPlayerCommand(data.command);
       return;
     }
 

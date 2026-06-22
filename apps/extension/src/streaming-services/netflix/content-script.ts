@@ -1,7 +1,7 @@
 import { SERVICE_BY_ID } from '@open-watch-party/shared';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 
-import { onMessage, sendMessage, type WatchReport } from '../../messaging';
+import { onMessage, sendMessage, type WatchReport, type WatchReportResult } from '../../messaging';
 import {
   NETFLIX_PLAYER_REQUEST_SOURCE,
   NETFLIX_PLAYER_RESPONSE_SOURCE,
@@ -9,6 +9,11 @@ import {
   type NetflixPlayerStatusResponse,
   type NetflixRpcRequest,
 } from './player-rpc';
+import {
+  createNetflixPlaybackSyncPoint,
+  shouldSendNetflixPlaybackReport,
+  type NetflixPlaybackSyncPoint,
+} from './playback-report';
 import { isVideoTimelineReady } from '../playback-readiness';
 
 const NETFLIX = SERVICE_BY_ID.netflix;
@@ -20,8 +25,9 @@ const VIDEO_EVENTS = [
   'durationchange',
   'ended',
 ] as const;
-const SEEK_THRESHOLD_SEC = 5;
-const SUPPRESSION_MS = 750;
+const SEEK_THRESHOLD_SEC = 1.5;
+// Netflix emits stale media events while its internal player settles after a remote command.
+const SUPPRESSION_MS = 1_500;
 const PLAYER_STATUS_TIMEOUT_MS = 250;
 
 function sendPlayerCommand(command: NetflixPlayerCommand): void {
@@ -31,14 +37,16 @@ function sendPlayerCommand(command: NetflixPlayerCommand): void {
   );
 }
 
-function sendReport(report: WatchReport): void {
-  void sendMessage('content:watch-report', report).catch(() => undefined);
+function sendReport(report: WatchReport): Promise<WatchReportResult> {
+  return sendMessage('content:watch-report', report).catch(() => 'retry');
 }
 
 export function runNetflixContentScript(ctx: ContentScriptContext): void {
   let activeVideo: HTMLVideoElement | null = null;
   let suppressUntil = 0;
   let pendingFrame: number | null = null;
+  let reportEpoch = 0;
+  let lastPlaybackSyncPoint: NetflixPlaybackSyncPoint | null = null;
 
   const readMediaId = (): string | null => {
     const mediaId = NETFLIX.extractMediaId(new URL(location.href));
@@ -61,9 +69,15 @@ export function runNetflixContentScript(ctx: ContentScriptContext): void {
       serviceId: 'netflix',
       mediaId,
       title: document.title,
-      positionSec: activeVideo.currentTime,
+      positionSec: Number(activeVideo.currentTime.toFixed(3)),
       playing: !activeVideo.paused,
     };
+  };
+
+  const markPlaybackSynced = (report: WatchReport, observedAtMs: number) => {
+    const syncPoint = createNetflixPlaybackSyncPoint(report, observedAtMs);
+    lastPlaybackSyncPoint = syncPoint;
+    return syncPoint;
   };
 
   const requestPlayerStatus = (): Promise<boolean | null> => {
@@ -105,11 +119,38 @@ export function runNetflixContentScript(ctx: ContentScriptContext): void {
   };
 
   const sendPlaybackReport = () => {
+    const observedAtMs = performance.now();
     const report = readWatchReport();
-    if (!report) return;
+    if (!report || !shouldSendNetflixPlaybackReport(report, lastPlaybackSyncPoint, observedAtMs)) {
+      return;
+    }
+
+    const requestEpoch = reportEpoch;
 
     void requestPlayerStatus().then((hasPlayer) => {
-      if (hasPlayer !== false) sendReport(report);
+      const responseAtMs = performance.now();
+      if (hasPlayer === false || requestEpoch !== reportEpoch || responseAtMs < suppressUntil) {
+        return;
+      }
+
+      const nextReport = readWatchReport();
+      if (
+        !nextReport ||
+        !shouldSendNetflixPlaybackReport(nextReport, lastPlaybackSyncPoint, responseAtMs)
+      ) {
+        return;
+      }
+
+      const syncPoint = markPlaybackSynced(nextReport, responseAtMs);
+      void sendReport(nextReport).then((result) => {
+        if (result === 'accepted') return;
+        if (lastPlaybackSyncPoint !== syncPoint) return;
+
+        lastPlaybackSyncPoint = null;
+        if (result === 'retry') {
+          window.setTimeout(scheduleRefresh, 1_000);
+        }
+      });
     });
   };
 
@@ -123,7 +164,12 @@ export function runNetflixContentScript(ctx: ContentScriptContext): void {
       if (activeVideo) {
         for (const e of VIDEO_EVENTS) activeVideo.removeEventListener(e, onVideoEvent);
       }
+      const isApplyingRemoteSnapshot = performance.now() < suppressUntil;
       activeVideo = video;
+      reportEpoch += 1;
+      if (!isApplyingRemoteSnapshot) {
+        lastPlaybackSyncPoint = null;
+      }
       if (activeVideo) {
         for (const e of VIDEO_EVENTS) activeVideo.addEventListener(e, onVideoEvent);
       }
@@ -154,11 +200,25 @@ export function runNetflixContentScript(ctx: ContentScriptContext): void {
 
   ctx.onInvalidated(
     onMessage('party:apply-snapshot', ({ data }) => {
-      if (!activeVideo || readMediaId() === null) return;
+      const mediaId = readMediaId();
+      if (!activeVideo || mediaId === null) return;
 
-      suppressUntil = performance.now() + SUPPRESSION_MS;
+      const observedAtMs = performance.now();
+      reportEpoch += 1;
+      suppressUntil = observedAtMs + SUPPRESSION_MS;
 
       const { positionSec, playing } = data.playback;
+      markPlaybackSynced(
+        {
+          serviceId: 'netflix',
+          mediaId,
+          title: document.title,
+          positionSec,
+          playing,
+        },
+        observedAtMs,
+      );
+
       const command: NetflixPlayerCommand =
         Math.abs(activeVideo.currentTime - positionSec) > SEEK_THRESHOLD_SEC
           ? { playing, positionMs: Math.round(positionSec * 1000) }

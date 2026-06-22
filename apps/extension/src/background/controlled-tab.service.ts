@@ -1,6 +1,6 @@
 import { browser } from 'wxt/browser';
 import type { PartySnapshot, PlaybackUpdate, ServiceId } from '@open-watch-party/shared';
-import { sendMessage, type WatchReport } from '../messaging';
+import { sendMessage, type WatchReport, type WatchReportResult } from '../messaging';
 import { findServiceByUrl, getServiceDefinition } from '../streaming-services/catalog';
 import { clearControlledTab, getBackgroundState, setControlledTab, setLastWarning } from './state';
 
@@ -12,7 +12,7 @@ export class ControlledTabService {
   constructor(
     private readonly options: {
       onControlledTabClosed: () => void;
-      onControlledTabPlaybackReady: (playback: PlaybackUpdate) => void;
+      onControlledTabPlaybackReady: (playback: PlaybackUpdate) => Promise<WatchReportResult>;
     },
   ) {}
 
@@ -26,25 +26,24 @@ export class ControlledTabService {
     });
   }
 
-  async handleWatchReport(tabId: number, report: WatchReport): Promise<void> {
+  async handleWatchReport(tabId: number, report: WatchReport): Promise<WatchReportResult> {
     const state = await getBackgroundState();
     const room = state.room;
     if (!room) {
-      return;
+      return 'ignored';
     }
 
     if (report.serviceId !== room.serviceId) {
-      return;
+      return 'ignored';
     }
 
     const controlledTab = state.controlledTab;
     if (!controlledTab) {
-      await this.adoptTabForRoom(tabId, report, room);
-      return;
+      return this.adoptTabForRoom(tabId, report, room);
     }
 
     if (controlledTab.tabId !== tabId) {
-      return;
+      return 'ignored';
     }
 
     await setControlledTab({
@@ -52,7 +51,7 @@ export class ControlledTabService {
       mediaId: report.mediaId,
     });
 
-    this.options.onControlledTabPlaybackReady(toPlaybackUpdate(report));
+    return this.options.onControlledTabPlaybackReady(toPlaybackUpdate(report));
   }
 
   async applySnapshotToControlledTab(): Promise<void> {
@@ -122,14 +121,15 @@ export class ControlledTabService {
     tabId: number,
     report: WatchReport,
     room: PartySnapshot,
-  ): Promise<void> {
+  ): Promise<WatchReportResult> {
     if (room.playback.mediaId !== report.mediaId) {
-      return;
+      return 'ignored';
     }
 
     void sendMessage('party:apply-snapshot', room, { tabId }).catch(() => undefined);
     await setControlledTab({ tabId, mediaId: report.mediaId });
     await setLastWarning(null);
+    return 'accepted';
   }
 
   private async handleTabUpdated(tabId: number, url: string | undefined): Promise<void> {
