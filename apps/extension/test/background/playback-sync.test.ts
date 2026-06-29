@@ -31,6 +31,7 @@ function report(overrides: Partial<WatchReport> = {}): WatchReport {
     title: 'Movie',
     positionSec: 10,
     playing: true,
+    reason: 'snapshot',
     ...overrides,
   };
 }
@@ -81,6 +82,84 @@ describe('PlaybackSyncEngine', () => {
     });
   });
 
+  it('never broadcasts passive snapshots during normal playback', () => {
+    let now = 1_000;
+    const engine = new PlaybackSyncEngine({ now: () => now });
+
+    engine.beginRemoteApply(snapshot());
+
+    now = 1_100;
+    engine.handleObservation(report({ positionSec: 10.1 }));
+
+    now = 5_000;
+    expect(engine.handleObservation(report({ positionSec: 11 }))).toEqual({ action: 'ignore' });
+    expect(engine.handleObservation(report({ positionSec: 11, playing: false }))).toEqual({
+      action: 'ignore',
+    });
+  });
+
+  it('does not broadcast play events just because passive playback drifted', () => {
+    let now = 1_000;
+    const engine = new PlaybackSyncEngine({ now: () => now });
+
+    engine.beginRemoteApply(snapshot());
+
+    now = 1_100;
+    engine.handleObservation(report({ positionSec: 10.1 }));
+
+    now = 5_000;
+    expect(engine.handleObservation(report({ positionSec: 11, reason: 'play' }))).toEqual({
+      action: 'ignore',
+    });
+  });
+
+  it('broadcasts play and pause intent when the playback state changes', () => {
+    let now = 1_000;
+    const engine = new PlaybackSyncEngine({ now: () => now });
+
+    engine.beginRemoteApply(snapshot());
+
+    now = 1_100;
+    engine.handleObservation(report({ positionSec: 10.1 }));
+
+    now = 1_200;
+    const pause = engine.handleObservation(
+      report({ positionSec: 10.2, playing: false, reason: 'pause' }),
+    );
+    expect(pause).toEqual({
+      action: 'send-update',
+      update: { mediaId: '123456', title: 'Movie', positionSec: 10.2, playing: false },
+    });
+    if (pause.action !== 'send-update') throw new Error('Expected pause update');
+    engine.markLocalUpdateResult(pause.update, 'accepted');
+
+    now = 1_300;
+    expect(engine.handleObservation(report({ positionSec: 10.2, reason: 'play' }))).toEqual({
+      action: 'send-update',
+      update: { mediaId: '123456', title: 'Movie', positionSec: 10.2, playing: true },
+    });
+  });
+
+  it('broadcasts seek intent only when the target position meaningfully changed', () => {
+    let now = 1_000;
+    const engine = new PlaybackSyncEngine({ now: () => now });
+
+    engine.beginRemoteApply(snapshot());
+
+    now = 1_100;
+    engine.handleObservation(report({ positionSec: 10.1 }));
+
+    now = 1_200;
+    expect(engine.handleObservation(report({ positionSec: 10.7, reason: 'seek' }))).toEqual({
+      action: 'ignore',
+    });
+
+    expect(engine.handleObservation(report({ positionSec: 20, reason: 'seek' }))).toEqual({
+      action: 'send-update',
+      update: { mediaId: '123456', title: 'Movie', positionSec: 20, playing: true },
+    });
+  });
+
   it('sends meaningful local playback changes and dedupes the pending update', () => {
     let now = 1_000;
     const engine = new PlaybackSyncEngine({ now: () => now });
@@ -90,7 +169,9 @@ describe('PlaybackSyncEngine', () => {
     engine.handleObservation(report({ positionSec: 10.1 }));
 
     now = 1_200;
-    const decision = engine.handleObservation(report({ positionSec: 10.2, playing: false }));
+    const decision = engine.handleObservation(
+      report({ positionSec: 10.2, playing: false, reason: 'pause' }),
+    );
     expect(decision).toEqual({
       action: 'send-update',
       update: { mediaId: '123456', title: 'Movie', positionSec: 10.2, playing: false },
@@ -118,7 +199,9 @@ describe('PlaybackSyncEngine', () => {
     now = 1_100;
     engine.handleObservation(report({ positionSec: 10.1 }));
 
-    const decision = engine.handleObservation(report({ positionSec: 10.2, playing: false }));
+    const decision = engine.handleObservation(
+      report({ positionSec: 10.2, playing: false, reason: 'pause' }),
+    );
     if (decision.action !== 'send-update') throw new Error('Expected local update');
 
     engine.markLocalUpdateResult(decision.update, 'retry');
@@ -132,10 +215,12 @@ describe('PlaybackSyncEngine', () => {
   it('ignores stale local update results after a newer update becomes pending', () => {
     const engine = new PlaybackSyncEngine();
 
-    const first = engine.handleObservation(report({ playing: false }));
+    const first = engine.handleObservation(report({ playing: false, reason: 'pause' }));
     if (first.action !== 'send-update') throw new Error('Expected first local update');
 
-    const second = engine.handleObservation(report({ positionSec: 20, playing: false }));
+    const second = engine.handleObservation(
+      report({ positionSec: 20, playing: false, reason: 'seek' }),
+    );
     if (second.action !== 'send-update') throw new Error('Expected second local update');
 
     expect(engine.markLocalUpdateResult(first.update, 'accepted')).toBe(false);

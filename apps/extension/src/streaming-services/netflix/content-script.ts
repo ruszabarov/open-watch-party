@@ -1,7 +1,7 @@
 import { SERVICE_BY_ID } from '@open-watch-party/shared';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 
-import { onMessage, sendMessage, type WatchReport } from '../../messaging';
+import { onMessage, sendMessage, type WatchReport, type WatchReportReason } from '../../messaging';
 import {
   NETFLIX_PLAYER_REQUEST_SOURCE,
   NETFLIX_PLAYER_RESPONSE_SOURCE,
@@ -34,6 +34,19 @@ function sendReport(report: WatchReport): void {
   void sendMessage('content:watch-report', report).catch(() => undefined);
 }
 
+function reasonForVideoEvent(type: string): WatchReportReason {
+  switch (type) {
+    case 'play':
+      return 'play';
+    case 'pause':
+      return 'pause';
+    case 'seeked':
+      return 'seek';
+    default:
+      return 'snapshot';
+  }
+}
+
 export function runNetflixContentScript(ctx: ContentScriptContext): void {
   let activeVideo: HTMLVideoElement | null = null;
   let pendingFrame: number | null = null;
@@ -45,7 +58,7 @@ export function runNetflixContentScript(ctx: ContentScriptContext): void {
     return mediaId;
   };
 
-  const readWatchReport = (): WatchReport | null => {
+  const readWatchReport = (reason: WatchReportReason = 'snapshot'): WatchReport | null => {
     const mediaId = readMediaId();
     if (mediaId === null || !isVideoTimelineReady(activeVideo)) {
       return null;
@@ -57,6 +70,7 @@ export function runNetflixContentScript(ctx: ContentScriptContext): void {
       title: document.title,
       positionSec: Number(activeVideo.currentTime.toFixed(3)),
       playing: !activeVideo.paused,
+      reason,
     };
   };
 
@@ -98,20 +112,20 @@ export function runNetflixContentScript(ctx: ContentScriptContext): void {
     });
   };
 
-  const sendPlaybackReport = () => {
+  const sendPlaybackReport = (reason: WatchReportReason = 'snapshot') => {
     void requestPlayerStatus().then((hasPlayer) => {
       if (hasPlayer === false) return;
 
-      const report = readWatchReport();
+      const report = readWatchReport(reason);
       if (report) sendReport(report);
     });
   };
 
-  const onVideoEvent = () => {
-    refresh();
+  const onVideoEvent = (event: Event) => {
+    refresh(reasonForVideoEvent(event.type));
   };
 
-  function refresh() {
+  function refresh(reason: WatchReportReason = 'snapshot') {
     const video = document.querySelector<HTMLVideoElement>('video');
     if (video !== activeVideo) {
       if (activeVideo) {
@@ -122,7 +136,7 @@ export function runNetflixContentScript(ctx: ContentScriptContext): void {
         for (const e of VIDEO_EVENTS) activeVideo.addEventListener(e, onVideoEvent);
       }
     }
-    sendPlaybackReport();
+    sendPlaybackReport(reason);
   }
 
   const scheduleRefresh = () => {

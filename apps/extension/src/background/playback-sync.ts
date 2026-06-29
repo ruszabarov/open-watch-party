@@ -75,7 +75,7 @@ export class PlaybackSyncEngine {
     if (this.remoteApply) {
       if (this.matchesSyncPoint(report, this.remoteApply.syncPoint, observedAtMs)) {
         this.lastAccepted = {
-          playback: playbackAt(this.remoteApply.syncPoint, observedAtMs),
+          playback: reportPlayback,
           observedAtMs,
         };
         this.remoteApply = null;
@@ -92,6 +92,17 @@ export class PlaybackSyncEngine {
 
     const activeLocalUpdate = this.pendingLocalUpdate ?? this.lastAccepted;
     if (activeLocalUpdate && this.matchesSyncPoint(report, activeLocalUpdate, observedAtMs)) {
+      this.reanchorAcceptedPlayback(reportPlayback, observedAtMs);
+      return { action: 'ignore' };
+    }
+
+    if (!isSyncIntent(report)) {
+      this.reanchorAcceptedPlayback(reportPlayback, observedAtMs);
+      return { action: 'ignore' };
+    }
+
+    if (activeLocalUpdate && !this.shouldBroadcastIntent(report, activeLocalUpdate, observedAtMs)) {
+      this.reanchorAcceptedPlayback(reportPlayback, observedAtMs);
       return { action: 'ignore' };
     }
 
@@ -192,6 +203,44 @@ export class PlaybackSyncEngine {
 
     return playbackMatches(report, expectedPlayback, this.positionToleranceSec);
   }
+
+  private shouldBroadcastIntent(
+    report: WatchReport,
+    syncPoint: SyncPoint,
+    observedAtMs: number,
+  ): boolean {
+    const expectedPlayback = playbackAt(syncPoint, observedAtMs);
+
+    if (report.mediaId !== expectedPlayback.mediaId) {
+      return true;
+    }
+
+    switch (report.reason) {
+      case 'play':
+        return report.playing && !expectedPlayback.playing;
+      case 'pause':
+        return !report.playing && expectedPlayback.playing;
+      case 'seek':
+        return (
+          Math.abs(report.positionSec - expectedPlayback.positionSec) >= this.positionToleranceSec
+        );
+      case 'snapshot':
+        return false;
+    }
+  }
+
+  private reanchorAcceptedPlayback(playback: PlaybackUpdate, observedAtMs: number): void {
+    if (this.pendingLocalUpdate) return;
+    if (!this.lastAccepted) return;
+    if (playback.mediaId !== this.lastAccepted.playback.mediaId) return;
+    if (playback.playing !== this.lastAccepted.playback.playing) return;
+
+    this.lastAccepted = { playback, observedAtMs };
+  }
+}
+
+function isSyncIntent(report: WatchReport): boolean {
+  return report.reason === 'play' || report.reason === 'pause' || report.reason === 'seek';
 }
 
 export function toPlaybackUpdate(report: WatchReport): PlaybackUpdate {

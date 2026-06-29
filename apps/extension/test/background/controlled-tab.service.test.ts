@@ -54,6 +54,7 @@ function report(overrides: Partial<WatchReport> = {}): WatchReport {
     title: 'Movie',
     positionSec: 10,
     playing: true,
+    reason: 'snapshot',
     ...overrides,
   };
 }
@@ -83,13 +84,15 @@ describe('ControlledTabService retry scheduling', () => {
     });
     const internals = service as unknown as ControlledTabServiceInternals;
 
-    const first = internals.playbackSync.handleObservation(report({ playing: false }));
+    const first = internals.playbackSync.handleObservation(
+      report({ playing: false, reason: 'pause' }),
+    );
     if (first.action !== 'send-update') throw new Error('Expected first local update');
     internals.playbackSync.markLocalUpdateResult(first.update, 'retry');
     internals.scheduleLocalUpdateRetry(first.update);
 
     const second = internals.playbackSync.handleObservation(
-      report({ positionSec: 20, playing: false }),
+      report({ positionSec: 20, playing: false, reason: 'seek' }),
     );
     if (second.action !== 'send-update') throw new Error('Expected second local update');
     internals.playbackSync.markLocalUpdateResult(second.update, 'retry');
@@ -124,12 +127,14 @@ describe('ControlledTabService retry scheduling', () => {
     });
     const internals = service as unknown as ControlledTabServiceInternals;
 
-    const first = internals.playbackSync.handleObservation(report({ playing: false }));
+    const first = internals.playbackSync.handleObservation(
+      report({ playing: false, reason: 'pause' }),
+    );
     if (first.action !== 'send-update') throw new Error('Expected first local update');
     const firstApply = internals.applySyncDecision(1, first);
 
     const second = internals.playbackSync.handleObservation(
-      report({ positionSec: 20, playing: false }),
+      report({ positionSec: 20, playing: false, reason: 'seek' }),
     );
     if (second.action !== 'send-update') throw new Error('Expected second local update');
     await expect(internals.applySyncDecision(1, second)).resolves.toBe('accepted');

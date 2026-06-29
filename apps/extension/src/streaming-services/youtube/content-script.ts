@@ -1,7 +1,7 @@
 import { SERVICE_BY_ID } from '@open-watch-party/shared';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 
-import { onMessage, sendMessage, type WatchReport } from '../../messaging';
+import { onMessage, sendMessage, type WatchReport, type WatchReportReason } from '../../messaging';
 import { isVideoTimelineReady } from '../playback-readiness';
 import { isYoutubeAdPlayback } from './ads';
 
@@ -29,6 +29,19 @@ function sendReport(report: WatchReport): void {
   void sendMessage('content:watch-report', report).catch(() => undefined);
 }
 
+function reasonForVideoEvent(type: string): WatchReportReason {
+  switch (type) {
+    case 'play':
+      return 'play';
+    case 'pause':
+      return 'pause';
+    case 'seeked':
+      return 'seek';
+    default:
+      return 'snapshot';
+  }
+}
+
 export function runYoutubeContentScript(ctx: ContentScriptContext): void {
   let activeVideo: HTMLVideoElement | null = null;
   let activePlayer: Element | null = null;
@@ -42,7 +55,7 @@ export function runYoutubeContentScript(ctx: ContentScriptContext): void {
     return mediaId;
   };
 
-  const readWatchReport = (): WatchReport | null => {
+  const readWatchReport = (reason: WatchReportReason = 'snapshot'): WatchReport | null => {
     const mediaId = readMediaId();
     if (
       mediaId === null ||
@@ -59,22 +72,23 @@ export function runYoutubeContentScript(ctx: ContentScriptContext): void {
       title: document.title,
       positionSec: Number(activeVideo.currentTime.toFixed(3)),
       playing: !activeVideo.paused,
+      reason,
     };
   };
 
-  const sendPlaybackReport = () => {
-    const report = readWatchReport();
+  const sendPlaybackReport = (reason: WatchReportReason = 'snapshot') => {
+    const report = readWatchReport(reason);
     if (report) sendReport(report);
   };
 
-  const onVideoEvent = () => {
-    refresh();
+  const onVideoEvent = (event: Event) => {
+    refresh(reasonForVideoEvent(event.type));
   };
 
   const playerObserver = new MutationObserver(scheduleRefresh);
   ctx.onInvalidated(() => playerObserver.disconnect());
 
-  function refresh() {
+  function refresh(reason: WatchReportReason = 'snapshot') {
     const video = document.querySelector<HTMLVideoElement>(
       '#movie_player video, video.html5-main-video, video',
     );
@@ -103,7 +117,7 @@ export function runYoutubeContentScript(ctx: ContentScriptContext): void {
     }
     wasAdShowing = adShowing;
 
-    sendPlaybackReport();
+    sendPlaybackReport(reason);
   }
 
   function scheduleRefresh() {

@@ -11,12 +11,15 @@ export interface JoinRoomRequest {
   tabId: number;
 }
 
+export type WatchReportReason = 'snapshot' | 'play' | 'pause' | 'seek';
+
 export type WatchReport = {
   serviceId: ServiceId;
   mediaId: string;
   title?: string;
   positionSec: number;
   playing: boolean;
+  reason: WatchReportReason;
 };
 
 export type WatchReportResult = 'accepted' | 'ignored' | 'retry';
