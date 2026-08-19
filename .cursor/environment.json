@@ -1,7 +1,3 @@
 {
-  "name": "Open Watch Party",
-  "build": {
-    "dockerfile": "Dockerfile"
-  },
   "install": "pnpm install --frozen-lockfile"
 }

@@ -2,10 +2,7 @@
 
 ## Cursor Cloud specific instructions
 
-Open Watch Party is a pnpm workspace (pnpm 11, Node 26 via `.cursor/Dockerfile`).
-Standard commands are in the root `package.json` and `README.md`.
-
-After changing `.cursor/environment.json` or `.cursor/Dockerfile`, trigger a new environment build in the Cursor dashboard so agents pick up the updated base image.
+Open Watch Party is a pnpm workspace (pnpm 11). Standard commands are in the root `package.json` and `README.md`.
 
 Services:
 - `apps/server`: `pnpm dev:server` → `wrangler dev` on `http://localhost:8787`. No Cloudflare account needed for local dev.
