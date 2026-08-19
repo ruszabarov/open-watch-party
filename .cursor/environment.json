@@ -1,0 +1,8 @@
+{
+  "name": "Open Watch Party",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "install": "pnpm install"
+}

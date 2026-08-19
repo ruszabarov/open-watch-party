@@ -2,7 +2,8 @@
 
 ## Cursor Cloud specific instructions
 
-Open Watch Party is a pnpm workspace (Node 22, pnpm 11 pinned via `packageManager`).
+Open Watch Party is a pnpm workspace (Node 26, pnpm 11 pinned via `packageManager`; `.nvmrc` pins Node 26).
+The Cloud Agent base image is defined in `.cursor/environment.json` (`node:26-bookworm-slim` Dockerfile).
 Dependencies are refreshed automatically on startup by the update script (`pnpm install`),
 whose `postinstall` runs `wxt prepare` to generate extension types. Standard commands
 live in the root `package.json` and `README.md`; prefer those over duplicating them.
@@ -23,7 +24,7 @@ Checks (from repo root): `pnpm lint`, `pnpm format:check`, `pnpm typecheck`, `pn
 runs the full lint + format + typecheck + all tests gauntlet.
 
 Testing the realtime protocol end-to-end without a browser: connect with the `partysocket`
-client (Node 22 provides a global `WebSocket`) to `localhost:8787` and exchange the JSON
+client (Node provides a global `WebSocket`) to `localhost:8787` and exchange the JSON
 envelope messages defined in `packages/shared/src/protocol.ts` (`room:create`, `room:join`,
 `playback:update`), asserting `playback:state` broadcasts propagate between clients.
 
