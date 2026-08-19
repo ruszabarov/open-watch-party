@@ -1,6 +1,5 @@
 {
   "name": "Open Watch Party",
-  "user": "node",
   "build": {
     "dockerfile": "Dockerfile"
   },
