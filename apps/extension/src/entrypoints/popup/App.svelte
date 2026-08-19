@@ -4,7 +4,7 @@
         queryActiveTabSummary,
         type ActiveTabSummary,
     } from "./active-tab.js";
-    import { getErrorMessage } from "~/utils/errors.js";
+    import { failureMessage, thrownErrorSchema } from "@open-watch-party/shared";
     import Notice from "~/components/popup/Notice.svelte";
     import PopupContent from "./PopupContent.svelte";
     import {
@@ -28,8 +28,8 @@
             })
             .catch((error) => {
                 if (!mounted) return;
-                activeTabError = getErrorMessage(
-                    error,
+                activeTabError = failureMessage(
+                    thrownErrorSchema.safeParse(error),
                     "Could not read the active tab.",
                 );
             });

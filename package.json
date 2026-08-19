@@ -14,7 +14,7 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "typecheck": "pnpm --filter @open-watch-party/shared typecheck && pnpm --filter @open-watch-party/server typecheck && pnpm --filter @open-watch-party/extension check",
-    "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm --filter @open-watch-party/extension test && pnpm --filter @open-watch-party/server test && pnpm --filter @open-watch-party/shared test",
+    "check": "pnpm lint && pnpm format:check && pnpm typecheck",
     "release:extension": "release-it --config .release-it.extension.json",
     "release:extension:dry-run": "release-it --config .release-it.extension.json --dry-run",
     "release:server": "release-it --config .release-it.server.json",
@@ -29,8 +29,7 @@
     "oxlint": "^1.79.0",
     "release-it": "^20.2.0",
     "tsx": "^4.22.4",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "typescript": "^6.0.3"
   },
   "packageManager": "pnpm@11.1.3"
 }

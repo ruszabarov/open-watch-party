@@ -7,14 +7,14 @@ import {
   type WatchReportResult,
 } from '../messaging';
 import { findServiceByUrl, getServiceDefinition } from '../streaming-services/catalog';
-import { PlaybackSyncEngine, toPlaybackUpdate } from './playback-sync';
+import { PlaybackSyncEngine, toPlaybackUpdate, type PlaybackSyncDecision } from './playback-sync';
 import { clearControlledTab, getBackgroundState, setControlledTab, setLastWarning } from './state';
+
+const DEFAULT_LOCAL_UPDATE_RETRY_MS = 1_000;
 
 function isServiceUrl(definition: { matchesUrl(url: URL): boolean }, rawUrl: string): boolean {
   return URL.canParse(rawUrl) && definition.matchesUrl(new URL(rawUrl));
 }
-
-const LOCAL_UPDATE_RETRY_MS = 1_000;
 
 export class ControlledTabService {
   private readonly playbackSync = new PlaybackSyncEngine();
@@ -64,32 +64,7 @@ export class ControlledTabService {
       mediaId: report.mediaId,
     });
 
-    return this.applySyncDecision(controlledTab.tabId, this.playbackSync.handleObservation(report));
-  }
-
-  private async applySyncDecision(
-    tabId: number,
-    decision: ReturnType<PlaybackSyncEngine['handleObservation']>,
-  ): Promise<WatchReportResult> {
-    switch (decision.action) {
-      case 'ignore':
-        return 'ignored';
-      case 'reapply-target':
-        this.sendApplyTarget(tabId, decision.target);
-        return 'ignored';
-      case 'send-update': {
-        const result = await this.options.onControlledTabPlaybackReady(decision.update);
-        const resultApplied = this.playbackSync.markLocalUpdateResult(decision.update, result);
-        if (!resultApplied) return 'ignored';
-
-        if (result === 'retry') {
-          this.scheduleLocalUpdateRetry(decision.update);
-        } else {
-          this.clearLocalUpdateRetryTimer();
-        }
-        return result;
-      }
-    }
+    return this.applyDecision(controlledTab.tabId, this.playbackSync.handleObservation(report));
   }
 
   async applySnapshotToControlledTab(): Promise<void> {
@@ -191,6 +166,18 @@ export class ControlledTabService {
     this.options.onControlledTabClosed();
   }
 
+  private applyDecision(tabId: number, decision: PlaybackSyncDecision): Promise<WatchReportResult> {
+    switch (decision.action) {
+      case 'ignore':
+        return Promise.resolve('ignored');
+      case 'reapply-target':
+        this.sendApplyTarget(tabId, decision.target);
+        return Promise.resolve('ignored');
+      case 'send-update':
+        return this.dispatchLocalUpdate(decision.update);
+    }
+  }
+
   private sendApplyTarget(tabId: number, target: PlaybackApplyTarget): void {
     this.clearLocalUpdateRetryTimer();
     void sendMessage('party:apply-playback-target', target, { tabId }).catch(() => undefined);
@@ -223,16 +210,29 @@ export class ControlledTabService {
       return;
     }
 
-    await this.applySyncDecision(tabId, this.playbackSync.handleRemoteApplyTimeout());
+    await this.applyDecision(tabId, this.playbackSync.handleRemoteApplyTimeout());
+  }
+
+  private async dispatchLocalUpdate(update: PlaybackUpdate): Promise<WatchReportResult> {
+    const result = await this.options.onControlledTabPlaybackReady(update);
+    const resultApplied = this.playbackSync.markLocalUpdateResult(update, result);
+    if (!resultApplied) return 'ignored';
+
+    if (result === 'retry') {
+      this.scheduleLocalUpdateRetry(update);
+    } else {
+      this.clearLocalUpdateRetryTimer();
+    }
+
+    return result;
   }
 
   private scheduleLocalUpdateRetry(update: PlaybackUpdate): void {
     this.clearLocalUpdateRetryTimer();
-
     this.localUpdateRetryTimer = setTimeout(() => {
       this.localUpdateRetryTimer = null;
       void this.retryLocalUpdate(update);
-    }, LOCAL_UPDATE_RETRY_MS);
+    }, DEFAULT_LOCAL_UPDATE_RETRY_MS);
   }
 
   private async retryLocalUpdate(update: PlaybackUpdate): Promise<void> {

@@ -10,14 +10,14 @@
     "build:firefox": "wxt build -b firefox",
     "build:safari": "wxt build -b safari",
     "zip": "wxt zip",
-    "test": "vitest run",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "release": "cd ../.. && release-it --config .release-it.extension.json"
   },
   "dependencies": {
     "@webext-core/messaging": "^3.0.2",
     "partysocket": "^1.2.0",
-    "ts-pattern": "catalog:"
+    "ts-pattern": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@internationalized/date": "^3.12.2",

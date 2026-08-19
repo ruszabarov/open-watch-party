@@ -1,5 +1,5 @@
 import { defineBackground } from 'wxt/utils/define-background';
-import { getErrorMessage } from '~/utils/errors.js';
+import { failureMessage, thrownErrorSchema } from '@open-watch-party/shared';
 import { ControlledTabService } from '../background/controlled-tab.service';
 import { PartySessionService } from '../background/party-session.service';
 import { reportBackgroundError } from '../background/state';
@@ -36,13 +36,17 @@ class BackgroundController {
     this.registerPopupHandlers();
     this.controlledTabService.registerEventHandlers();
     void this.partySessionService.resumeStoredSession().catch((error) => {
-      void reportBackgroundError(getErrorMessage(error));
+      void reportBackgroundError(
+        failureMessage(thrownErrorSchema.safeParse(error), 'Unexpected error.'),
+      );
     });
   }
 
   private applyRoomSnapshotToControlledTab(): void {
     void this.controlledTabService.applySnapshotToControlledTab().catch((error) => {
-      void reportBackgroundError(getErrorMessage(error));
+      void reportBackgroundError(
+        failureMessage(thrownErrorSchema.safeParse(error), 'Unexpected error.'),
+      );
     });
   }
 
@@ -56,7 +60,9 @@ class BackgroundController {
     try {
       await action();
     } catch (error) {
-      await reportBackgroundError(getErrorMessage(error));
+      await reportBackgroundError(
+        failureMessage(thrownErrorSchema.safeParse(error), 'Unexpected error.'),
+      );
     }
   }
 

@@ -1,31 +1,40 @@
 import { PartySocket } from 'partysocket';
-import type {
-  CreateRoomRequest,
-  JoinRoomRequest,
-  OperationResult,
-  PartySnapshot,
-  PlaybackUpdate,
-  RoomClosedEvent,
-  RoomResponse,
-  ServerMessage,
+import {
+  decodeAckPayload,
+  parseServerSocketData,
+  partySnapshotSchema,
+  roomLeaveResponseSchema,
+  roomResponseSchema,
+  type ClientMessage,
+  type CreateRoomRequest,
+  type JoinRoomRequest,
+  type OperationResult,
+  type PartySnapshot,
+  type PlaybackUpdate,
+  type RoomClosedEvent,
+  type RoomLeaveResponse,
+  type RoomResponse,
+  type ServerMessage,
 } from '@open-watch-party/shared';
 
 const ACK_TIMEOUT_MS = 5_000;
 const CONNECT_TIMEOUT_MS = 5_000;
-// WebSocket.OPEN
 const SOCKET_OPEN = 1;
 
+type ClientRequest =
+  | { type: 'room:create'; payload: CreateRoomRequest }
+  | { type: 'room:join'; payload: JoinRoomRequest }
+  | { type: 'room:leave' }
+  | { type: 'playback:update'; payload: PlaybackUpdate };
+
+type AckResult = Extract<ServerMessage, { type: 'ack' }>['result'];
+
 type PendingRequest = {
-  resolve: (result: OperationResult<unknown>) => void;
+  resolve: (result: AckResult) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 };
 
-/**
- * Wraps a PartySocket bound to a single room (the PartyKit party id) and layers
- * a request/response protocol on top of the raw WebSocket: each request carries
- * a correlation id the server echoes back in its `ack`.
- */
 export class RealtimeConnection {
   readonly room: string;
 
@@ -53,7 +62,7 @@ export class RealtimeConnection {
       }
     });
 
-    this.socket.addEventListener('message', (event: MessageEvent) => {
+    this.socket.addEventListener('message', (event: MessageEvent<string | ArrayBuffer | Blob>) => {
       this.handleMessage(event.data);
     });
 
@@ -66,19 +75,27 @@ export class RealtimeConnection {
   }
 
   createRoom(payload: CreateRoomRequest): Promise<OperationResult<RoomResponse>> {
-    return this.request<RoomResponse>('room:create', payload);
+    return this.request({ type: 'room:create', payload }).then((result) =>
+      decodeAckPayload(result, roomResponseSchema),
+    );
   }
 
   joinRoom(payload: JoinRoomRequest): Promise<OperationResult<RoomResponse>> {
-    return this.request<RoomResponse>('room:join', payload);
+    return this.request({ type: 'room:join', payload }).then((result) =>
+      decodeAckPayload(result, roomResponseSchema),
+    );
   }
 
-  leaveRoom(): Promise<OperationResult<{ roomCode: string }>> {
-    return this.request<{ roomCode: string }>('room:leave');
+  leaveRoom(): Promise<OperationResult<RoomLeaveResponse>> {
+    return this.request({ type: 'room:leave' }).then((result) =>
+      decodeAckPayload(result, roomLeaveResponseSchema),
+    );
   }
 
   updatePlayback(payload: PlaybackUpdate): Promise<OperationResult<PartySnapshot>> {
-    return this.request<PartySnapshot>('playback:update', payload);
+    return this.request({ type: 'playback:update', payload }).then((result) =>
+      decodeAckPayload(result, partySnapshotSchema),
+    );
   }
 
   onRoomState(handler: (snapshot: PartySnapshot) => void): void {
@@ -110,36 +127,27 @@ export class RealtimeConnection {
     this.pending.clear();
   }
 
-  private async request<T>(type: string, payload?: unknown): Promise<OperationResult<T>> {
+  private async request(body: ClientRequest): Promise<AckResult> {
     await this.waitForOpen();
 
     const rid = `r${(this.requestSeq += 1)}`;
-    return new Promise<OperationResult<T>>((resolve, reject) => {
+    const envelope: ClientMessage =
+      body.type === 'room:leave' ? { type: 'room:leave', rid } : { ...body, rid };
+
+    return new Promise<AckResult>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(rid);
         reject(new Error('The server did not respond in time.'));
       }, ACK_TIMEOUT_MS);
 
-      this.pending.set(rid, {
-        resolve: resolve as (result: OperationResult<unknown>) => void,
-        reject,
-        timer,
-      });
-
-      const frame = payload === undefined ? { type, rid } : { type, rid, payload };
-      this.socket.send(JSON.stringify(frame));
+      this.pending.set(rid, { resolve, reject, timer });
+      this.socket.send(JSON.stringify(envelope));
     });
   }
 
-  private handleMessage(data: unknown): void {
-    if (typeof data !== 'string') {
-      return;
-    }
-
-    let message: ServerMessage;
-    try {
-      message = JSON.parse(data) as ServerMessage;
-    } catch {
+  private handleMessage(data: string | ArrayBuffer | Blob): void {
+    const message = parseServerSocketData(data);
+    if (message === null) {
       return;
     }
 

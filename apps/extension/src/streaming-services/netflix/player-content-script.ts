@@ -1,8 +1,7 @@
 import {
-  NETFLIX_PLAYER_REQUEST_SOURCE,
   NETFLIX_PLAYER_RESPONSE_SOURCE,
+  parseNetflixRpcRequest,
   type NetflixPlayerCommand,
-  type NetflixRpcRequest,
   type NetflixPlayerStatusResponse,
 } from './player-rpc';
 import type { NetflixPlayer } from './window';
@@ -137,25 +136,23 @@ export function runNetflixPlayerContentScript(): void {
       return;
     }
 
-    const data = event.data as Partial<NetflixRpcRequest> | null;
-    if (data?.source !== NETFLIX_PLAYER_REQUEST_SOURCE) {
+    const data = parseNetflixRpcRequest(event);
+    if (data === null) {
       return;
     }
 
-    if ('command' in data && data.command) {
+    if ('command' in data) {
       applyNetflixPlayerCommand(data.command);
       return;
     }
 
-    if ('query' in data && data.query === 'status' && typeof data.requestId === 'string') {
-      window.postMessage(
-        {
-          source: NETFLIX_PLAYER_RESPONSE_SOURCE,
-          requestId: data.requestId,
-          hasPlayer: getNetflixPlayer() !== null || getVideo() !== null,
-        } satisfies NetflixPlayerStatusResponse,
-        '*',
-      );
-    }
+    window.postMessage(
+      {
+        source: NETFLIX_PLAYER_RESPONSE_SOURCE,
+        requestId: data.requestId,
+        hasPlayer: getNetflixPlayer() !== null || getVideo() !== null,
+      } satisfies NetflixPlayerStatusResponse,
+      '*',
+    );
   });
 }

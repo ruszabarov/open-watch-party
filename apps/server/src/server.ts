@@ -1,16 +1,22 @@
 import { routePartykitRequest, Server, type Connection } from 'partyserver';
 import {
   applyPlaybackUpdate,
-  clientMessageSchema,
   createRoomState,
+  failureMessage,
+  parseClientSocketMessage,
   removeRoomMember,
   ROOM_CODE_TAKEN_ERROR,
+  roomStateSchema,
+  thrownErrorSchema,
   toPartySnapshot,
   upsertRoomMember,
   type ClientMessage,
   type OperationResult,
+  type PartySnapshot,
+  type RoomLeaveResponse,
+  type RoomResponse,
   type RoomState,
-  type ServerMessage,
+  type ServerEvent,
 } from '@open-watch-party/shared';
 
 const ROOM_IDLE_TTL_MS = 6 * 60 * 60 * 1_000;
@@ -47,14 +53,14 @@ export class WatchPartyServer extends Server<Env> {
   private readonly buckets = new Map<string, TokenBucket>();
 
   override async onStart(): Promise<void> {
-    this.state = (await this.ctx.storage.get<RoomState>(STORAGE_KEY)) ?? null;
+    this.state = await this.readStoredRoom();
   }
 
   override async onMessage(
     sender: Connection<ConnectionState>,
     raw: string | ArrayBuffer,
   ): Promise<void> {
-    const parsed = parseClientMessage(raw);
+    const parsed = parseClientSocketMessage(raw);
     if (!parsed.ok) {
       if (parsed.rid) {
         this.ack(sender, parsed.rid, failure(INVALID_PAYLOAD_ERROR));
@@ -79,25 +85,24 @@ export class WatchPartyServer extends Server<Env> {
           return;
       }
     } catch (error) {
-      this.ack(sender, message.rid, failure(errorMessage(error)));
+      this.ack(
+        sender,
+        message.rid,
+        failure(failureMessage(thrownErrorSchema.safeParse(error), 'Unexpected server error.')),
+      );
     }
   }
 
-  override async onClose(
-    connection: Connection<ConnectionState>,
-    _code: number,
-    _reason: string,
-    _wasClean: boolean,
-  ): Promise<void> {
+  override async onClose(connection: Connection<ConnectionState>): Promise<void> {
     await this.handleDisconnect(connection);
   }
 
-  override async onError(connection: Connection<ConnectionState>, _error: unknown): Promise<void> {
+  override async onError(connection: Connection<ConnectionState>): Promise<void> {
     await this.handleDisconnect(connection);
   }
 
   override async onAlarm(): Promise<void> {
-    const room = this.state ?? (await this.ctx.storage.get<RoomState>(STORAGE_KEY)) ?? null;
+    const room = this.state ?? (await this.readStoredRoom());
     if (room) {
       this.broadcastMessage({
         type: 'room:closed',
@@ -159,7 +164,7 @@ export class WatchPartyServer extends Server<Env> {
     message: Extract<ClientMessage, { type: 'room:leave' }>,
     sender: Connection<ConnectionState>,
   ): Promise<void> {
-    const memberId = connectionMemberId(sender);
+    const memberId = sender.state?.memberId ?? null;
     if (!memberId || !this.state) {
       this.ack(sender, message.rid, failure(SESSION_REQUIRED_ERROR));
       return;
@@ -176,7 +181,7 @@ export class WatchPartyServer extends Server<Env> {
     message: Extract<ClientMessage, { type: 'playback:update' }>,
     sender: Connection<ConnectionState>,
   ): Promise<void> {
-    const memberId = connectionMemberId(sender);
+    const memberId = sender.state?.memberId ?? null;
     if (!memberId) {
       this.ack(sender, message.rid, failure(SESSION_REQUIRED_ERROR));
       return;
@@ -206,7 +211,7 @@ export class WatchPartyServer extends Server<Env> {
   }
 
   private async handleDisconnect(connection: Connection<ConnectionState>): Promise<void> {
-    const memberId = connectionMemberId(connection);
+    const memberId = connection.state?.memberId ?? null;
     if (!memberId) {
       return;
     }
@@ -279,6 +284,11 @@ export class WatchPartyServer extends Server<Env> {
     return false;
   }
 
+  private async readStoredRoom(): Promise<RoomState | null> {
+    const parsed = roomStateSchema.safeParse(await this.ctx.storage.get(STORAGE_KEY));
+    return parsed.success ? parsed.data : null;
+  }
+
   private async saveRoom(): Promise<void> {
     if (!this.state) {
       return;
@@ -296,12 +306,12 @@ export class WatchPartyServer extends Server<Env> {
   private ack(
     connection: Connection<ConnectionState>,
     rid: string,
-    result: OperationResult<unknown>,
+    result: OperationResult<RoomResponse | PartySnapshot | RoomLeaveResponse>,
   ): void {
-    connection.send(JSON.stringify({ type: 'ack', rid, result } satisfies ServerMessage));
+    connection.send(JSON.stringify({ type: 'ack', rid, result }));
   }
 
-  private broadcastMessage(message: ServerMessage, ...without: string[]): void {
+  private broadcastMessage(message: ServerEvent, ...without: string[]): void {
     this.broadcast(JSON.stringify(message), without);
   }
 }
@@ -312,47 +322,10 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-type ParseResult = { ok: true; message: ClientMessage } | { ok: false; rid: string | null };
-
-function parseClientMessage(raw: string | ArrayBuffer): ParseResult {
-  let json: unknown;
-  try {
-    json = JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw));
-  } catch {
-    return { ok: false, rid: null };
-  }
-
-  const result = clientMessageSchema.safeParse(json);
-  if (result.success) {
-    return { ok: true, message: result.data };
-  }
-
-  return { ok: false, rid: extractRid(json) };
-}
-
-function extractRid(json: unknown): string | null {
-  if (typeof json === 'object' && json !== null && 'rid' in json) {
-    const rid = (json as { rid: unknown }).rid;
-    if (typeof rid === 'string') {
-      return rid;
-    }
-  }
-
-  return null;
-}
-
-function connectionMemberId(connection: Connection<ConnectionState>): string | null {
-  return connection.state?.memberId ?? null;
-}
-
 function success<T>(data: T): OperationResult<T> {
   return { ok: true, data };
 }
 
 function failure(error: string): OperationResult<never> {
   return { ok: false, error };
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Unexpected server error.';
 }

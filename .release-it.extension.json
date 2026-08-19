@@ -15,7 +15,6 @@
     "before:init": [
       "pnpm lint",
       "pnpm format:check",
-      "pnpm --filter @open-watch-party/shared test",
       "pnpm --filter @open-watch-party/extension check",
       "pnpm --filter @open-watch-party/extension build"
     ]

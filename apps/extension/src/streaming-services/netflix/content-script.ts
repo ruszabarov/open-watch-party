@@ -4,9 +4,8 @@ import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 import { onMessage, sendMessage, type WatchReport, type WatchReportReason } from '../../messaging';
 import {
   NETFLIX_PLAYER_REQUEST_SOURCE,
-  NETFLIX_PLAYER_RESPONSE_SOURCE,
+  parseNetflixPlayerStatusResponse,
   type NetflixPlayerCommand,
-  type NetflixPlayerStatusResponse,
   type NetflixRpcRequest,
 } from './player-rpc';
 import { isVideoTimelineReady } from '../playback-readiness';
@@ -86,12 +85,8 @@ export function runNetflixContentScript(ctx: ContentScriptContext): void {
       const onResponse = (event: MessageEvent) => {
         if (event.source !== window) return;
 
-        const data = event.data as Partial<NetflixPlayerStatusResponse> | null;
-        if (
-          data?.source !== NETFLIX_PLAYER_RESPONSE_SOURCE ||
-          data.requestId !== requestId ||
-          typeof data.hasPlayer !== 'boolean'
-        ) {
+        const data = parseNetflixPlayerStatusResponse(event);
+        if (data === null || data.requestId !== requestId) {
           return;
         }
 

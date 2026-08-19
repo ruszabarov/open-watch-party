@@ -2,8 +2,10 @@ import { browser } from 'wxt/browser';
 import {
   ACTIVE_ROOM_EXISTS_ERROR,
   createRoomCode,
+  failureMessage,
   normalizeRoomCode,
   ROOM_CODE_TAKEN_ERROR,
+  thrownErrorSchema,
 } from '@open-watch-party/shared';
 
 import type {
@@ -47,7 +49,9 @@ export class PartySessionService {
     try {
       return await this.sendPlaybackUpdate(update);
     } catch (error) {
-      await reportBackgroundError(getErrorMessage(error));
+      await reportBackgroundError(
+        failureMessage(thrownErrorSchema.safeParse(error), 'Unexpected error.'),
+      );
       return 'retry';
     }
   }
@@ -203,7 +207,9 @@ export class PartySessionService {
 
       await this.applyRoomResponse(response, true);
     } catch (error) {
-      await reportBackgroundError(getErrorMessage(error));
+      await reportBackgroundError(
+        failureMessage(thrownErrorSchema.safeParse(error), 'Unexpected error.'),
+      );
     }
   }
 

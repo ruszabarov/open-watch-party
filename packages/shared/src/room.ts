@@ -4,6 +4,7 @@ import type {
   PartySnapshot,
   PlaybackState,
   PlaybackUpdate,
+  RoomState,
   ServiceId,
 } from './protocol';
 import {
@@ -13,13 +14,7 @@ import {
 } from './protocol';
 import { SERVICE_BY_ID } from './streaming-services';
 
-export interface RoomState {
-  readonly roomCode: string;
-  readonly serviceId: ServiceId;
-  members: Map<string, PartyMember>;
-  playback: PlaybackState;
-  createdAt: number;
-}
+export type { RoomState } from './protocol';
 
 const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ROOM_CODE_LENGTH = 6;

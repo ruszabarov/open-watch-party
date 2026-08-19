@@ -1,26 +1,43 @@
+import { z } from 'zod';
+
 export const NETFLIX_PLAYER_REQUEST_SOURCE = 'open-watch-party:netflix-player-request';
 export const NETFLIX_PLAYER_RESPONSE_SOURCE = 'open-watch-party:netflix-player-response';
 
-export type NetflixPlayerCommand = {
-  positionMs?: number;
-  playing: boolean;
-};
+const netflixPlayerCommandSchema = z.object({
+  positionMs: z.number().optional(),
+  playing: z.boolean(),
+});
 
-export type NetflixPlayerCommandRequest = {
-  source: typeof NETFLIX_PLAYER_REQUEST_SOURCE;
-  command: NetflixPlayerCommand;
-};
+const netflixRpcRequestSchema = z.union([
+  z.object({
+    source: z.literal(NETFLIX_PLAYER_REQUEST_SOURCE),
+    command: netflixPlayerCommandSchema,
+  }),
+  z.object({
+    source: z.literal(NETFLIX_PLAYER_REQUEST_SOURCE),
+    requestId: z.string().min(1),
+    query: z.literal('status'),
+  }),
+]);
 
-export type NetflixPlayerStatusRequest = {
-  source: typeof NETFLIX_PLAYER_REQUEST_SOURCE;
-  requestId: string;
-  query: 'status';
-};
+const netflixPlayerStatusResponseSchema = z.object({
+  source: z.literal(NETFLIX_PLAYER_RESPONSE_SOURCE),
+  requestId: z.string().min(1),
+  hasPlayer: z.boolean(),
+});
 
-export type NetflixRpcRequest = NetflixPlayerCommandRequest | NetflixPlayerStatusRequest;
+export type NetflixPlayerCommand = z.output<typeof netflixPlayerCommandSchema>;
+export type NetflixRpcRequest = z.output<typeof netflixRpcRequestSchema>;
+export type NetflixPlayerStatusResponse = z.output<typeof netflixPlayerStatusResponseSchema>;
 
-export type NetflixPlayerStatusResponse = {
-  source: typeof NETFLIX_PLAYER_RESPONSE_SOURCE;
-  requestId: string;
-  hasPlayer: boolean;
-};
+export function parseNetflixRpcRequest(event: MessageEvent): NetflixRpcRequest | null {
+  const parsed = netflixRpcRequestSchema.safeParse(event.data);
+  return parsed.success ? parsed.data : null;
+}
+
+export function parseNetflixPlayerStatusResponse(
+  event: MessageEvent,
+): NetflixPlayerStatusResponse | null {
+  const parsed = netflixPlayerStatusResponseSchema.safeParse(event.data);
+  return parsed.success ? parsed.data : null;
+}

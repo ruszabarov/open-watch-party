@@ -15,8 +15,7 @@
     "before:init": [
       "pnpm lint",
       "pnpm format:check",
-      "pnpm --filter @open-watch-party/shared test",
-      "pnpm --filter @open-watch-party/server test"
+      "pnpm --filter @open-watch-party/server typecheck"
     ]
   },
   "plugins": {

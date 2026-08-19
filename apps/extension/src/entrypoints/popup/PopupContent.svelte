@@ -6,7 +6,7 @@
         type Settings as StoredSettings,
     } from "../../storage/settings";
     import type { ActiveTabSummary } from "./active-tab.js";
-    import { getErrorMessage } from "~/utils/errors.js";
+    import { failureMessage, thrownErrorSchema } from "@open-watch-party/shared";
 
     import Header from "~/components/popup/Header.svelte";
     import Lobby from "~/components/popup/Lobby.svelte";
@@ -50,10 +50,6 @@
     const leaveFirstMessage =
         "This tab is not controlling your active room. Leave it before starting or joining a room here.";
 
-    function setLastError(error: unknown): void {
-        commandError = getErrorMessage(error, "Unexpected popup error.");
-    }
-
     async function perform(
         action: () => Promise<void>,
         onSuccess?: () => void,
@@ -65,7 +61,10 @@
             commandError = null;
             onSuccess?.();
         } catch (error) {
-            setLastError(error);
+            commandError = failureMessage(
+                thrownErrorSchema.safeParse(error),
+                "Unexpected popup error.",
+            );
         } finally {
             isBusy = false;
         }

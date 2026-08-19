@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["eslint", "typescript", "import", "unicorn", "vitest", "node"],
+  "plugins": ["eslint", "typescript", "import", "unicorn", "node"],
   "categories": {
     "correctness": "error",
     "suspicious": "error"
@@ -70,20 +70,6 @@
       "globals": {
         "browser": "readonly",
         "chrome": "readonly"
-      }
-    },
-    {
-      "files": ["**/*.{test,spec}.ts", "**/*.{test,spec}.js"],
-      "globals": {
-        "afterAll": "readonly",
-        "afterEach": "readonly",
-        "beforeAll": "readonly",
-        "beforeEach": "readonly",
-        "describe": "readonly",
-        "expect": "readonly",
-        "it": "readonly",
-        "test": "readonly",
-        "vi": "readonly"
       }
     }
   ]
