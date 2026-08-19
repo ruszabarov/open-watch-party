@@ -3,8 +3,9 @@
 ## Cursor Cloud specific instructions
 
 Open Watch Party is a pnpm workspace (Node 26, pnpm 11 pinned via `packageManager`; `.nvmrc` pins Node 26).
-The Cloud Agent base image is defined in `.cursor/environment.json` (`node:26-bookworm-slim` Dockerfile).
-Dependencies are refreshed automatically on startup by the update script (`pnpm install`),
+The Cloud Agent base image is defined in `.cursor/Dockerfile` (`node:26-bookworm-slim`); `.cursor/environment.json`
+selects that Dockerfile and runs `pnpm install --frozen-lockfile` on startup.
+Dependencies are refreshed automatically on startup by the update script (`pnpm install --frozen-lockfile`),
 whose `postinstall` runs `wxt prepare` to generate extension types. Standard commands
 live in the root `package.json` and `README.md`; prefer those over duplicating them.
 
