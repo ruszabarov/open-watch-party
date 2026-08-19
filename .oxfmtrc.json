@@ -4,5 +4,23 @@
   "semi": true,
   "singleQuote": true,
   "trailingComma": "all",
-  "ignorePatterns": ["**/.wxt/**", "**/coverage/**", "**/dist/**", "**/*.svelte"]
+  "ignorePatterns": [
+    "**/.wxt/**",
+    "**/coverage/**",
+    "**/dist/**",
+    "**/*.svelte",
+    ".agent/**",
+    ".agents/**",
+    ".claude/**",
+    ".codex/**",
+    ".continue/**",
+    ".cursor/**",
+    ".gemini/**",
+    ".opencode/**",
+    ".pi/**",
+    ".roo/**",
+    ".windsurf/**",
+    ".zed/**",
+    "tools/oxlint/anti-slop/**"
+  ]
 }
