@@ -18,6 +18,7 @@
 </script>
 
 <span
+  role="img"
   class={[
     'inline-flex shrink-0 items-center justify-center rounded-lg leading-none font-bold',
     size === 'sm' ? 'h-6 w-6 text-xs' : 'h-9 w-9 text-lg',

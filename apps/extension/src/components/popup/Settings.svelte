@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import { LoaderCircle } from '@lucide/svelte';
   import { Button } from '~/components/ui/button/index.js';
   import { Input } from '~/components/ui/input/index.js';
   import { Label } from '~/components/ui/label/index.js';
@@ -23,14 +24,14 @@
 
   function handleSave(event: SubmitEvent): void {
     event.preventDefault();
-    onSave({ memberName });
+    onSave({ ...settings, memberName });
   }
 </script>
 
 <form class="flex flex-col gap-3" onsubmit={handleSave}>
-  <div class="flex flex-col gap-2">
+  <div class="flex flex-col gap-1.5">
     <Label
-      class="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+      class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
       for="display-name"
     >
       Display name
@@ -44,11 +45,12 @@
     />
   </div>
 
-  <Button
-    class="font-semibold"
-    type="submit"
-    disabled={isBusy || !dirty}
-  >
-    {dirty ? 'Save changes' : 'Saved'}
+  <Button type="submit" disabled={isBusy || !dirty}>
+    {#if isBusy}
+      <LoaderCircle size={14} strokeWidth={2} class="animate-spin" aria-hidden="true" />
+      Saving…
+    {:else}
+      {dirty ? 'Save changes' : 'Saved'}
+    {/if}
   </Button>
 </form>

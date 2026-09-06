@@ -3,10 +3,12 @@ import { sanitizeMemberName } from '@open-watch-party/shared';
 
 export interface Settings {
   readonly memberName: string;
+  readonly hideHint: boolean;
 }
 
 export const initialSettings: Settings = {
   memberName: 'Guest',
+  hideHint: false,
 };
 
 export const settingsItem = storage.defineItem<Settings>('local:watch-party-settings', {
@@ -32,11 +34,13 @@ export async function updateSettings(next: Settings): Promise<void> {
 function normalizeSettings(settings: Settings): Settings {
   return {
     memberName: sanitizeMemberName(settings.memberName),
+    hideHint: settings.hideHint === true,
   };
 }
 
 function createDefaultSettings(): Settings {
   return {
     memberName: `Guest ${Math.floor(Math.random() * 900 + 100)}`,
+    hideHint: false,
   };
 }

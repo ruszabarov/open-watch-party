@@ -10,18 +10,14 @@
   }
 
   const { kind, message, onDismiss }: Props = $props();
-
-  const alertTones = {
-    error: 'border-red-200 bg-red-50 text-red-700',
-    warning: 'border-amber-200 bg-amber-50 text-amber-700',
-  } as const;
 </script>
 
 <Alert.Root
-  class={['flex items-start gap-2 px-3 py-3', alertTones[kind]]}
+  variant={kind === 'error' ? 'destructive' : 'default'}
+  class={['flex items-start gap-2 px-3 py-2.5', kind === 'warning' ? 'bg-muted' : undefined]}
   role={kind === 'error' ? 'alert' : 'status'}
 >
-  <span class="inline-flex shrink-0 pt-0.5" aria-hidden="true">
+  <span class="inline-flex shrink-0" aria-hidden="true">
     {#if kind === 'error'}
       <CircleAlert size={14} strokeWidth={1.75} />
     {:else}
@@ -29,7 +25,7 @@
     {/if}
   </span>
 
-  <Alert.Description class="min-w-0 flex-1 wrap-break-word leading-5 text-foreground">
+  <Alert.Description class="wrap-break-word leading-5">
     {message}
   </Alert.Description>
 
@@ -37,7 +33,7 @@
     <Button
       variant="ghost"
       size="icon-xs"
-      class="h-5 w-5 shrink-0 text-current opacity-70 hover:bg-current/10 hover:opacity-100"
+      class="h-5 w-5 shrink-0 opacity-70 hover:opacity-100"
       aria-label="Dismiss"
       onclick={onDismiss}
     >
