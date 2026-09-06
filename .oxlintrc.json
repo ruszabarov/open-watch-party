@@ -16,7 +16,6 @@
     ".claude/**",
     ".codex/**",
     ".continue/**",
-    ".cursor/**",
     ".gemini/**",
     ".opencode/**",
     ".pi/**",
