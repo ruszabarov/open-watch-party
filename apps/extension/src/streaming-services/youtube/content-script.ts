@@ -3,6 +3,7 @@ import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 
 import { onMessage, sendMessage, type WatchReport, type WatchReportReason } from '../../messaging';
 import { isVideoTimelineReady } from '../playback-readiness';
+import { createYoutubeAdapter } from './adapter';
 import { isYoutubeAdPlayback } from './ads';
 
 const YOUTUBE = SERVICE_BY_ID.youtube;
@@ -14,7 +15,6 @@ const VIDEO_EVENTS = [
   'durationchange',
   'ended',
 ] as const;
-const SEEK_THRESHOLD_SEC = 1.5;
 const SUPPRESSION_MS = 750;
 
 function findPlayer(video: HTMLVideoElement | null): Element | null {
@@ -128,6 +128,12 @@ export function runYoutubeContentScript(ctx: ContentScriptContext): void {
     });
   }
 
+  const adapter = createYoutubeAdapter({
+    getVideo: () => activeVideo,
+    readMediaId,
+    isAdShowing: () => isAdShowing(activePlayer),
+  });
+
   const pageObserver = new MutationObserver(scheduleRefresh);
   pageObserver.observe(document.documentElement, { childList: true, subtree: true });
   ctx.onInvalidated(() => pageObserver.disconnect());
@@ -141,23 +147,7 @@ export function runYoutubeContentScript(ctx: ContentScriptContext): void {
     }),
   );
 
-  ctx.onInvalidated(
-    onMessage('party:apply-playback-target', ({ data }) => {
-      if (data.serviceId !== 'youtube') return;
-      if (!activeVideo || readMediaId() !== data.playback.mediaId) return;
-      if (isAdShowing(activePlayer)) return;
-
-      const { positionSec, playing } = data.playback;
-      if (Math.abs(activeVideo.currentTime - positionSec) > SEEK_THRESHOLD_SEC) {
-        activeVideo.currentTime = positionSec;
-      }
-      if (playing && activeVideo.paused) {
-        void activeVideo.play().catch(() => undefined);
-      } else if (!playing && !activeVideo.paused) {
-        activeVideo.pause();
-      }
-    }),
-  );
+  ctx.onInvalidated(onMessage('party:apply-playback-target', ({ data }) => adapter.apply(data)));
 
   refresh();
 }

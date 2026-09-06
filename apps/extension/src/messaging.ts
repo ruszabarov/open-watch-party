@@ -24,6 +24,8 @@ export type WatchReport = {
 
 export type WatchReportResult = 'accepted' | 'ignored' | 'retry';
 
+export type ApplyPlaybackResult = 'applied' | 'deferred' | 'dropped';
+
 export type PlaybackApplyTarget = {
   commandId: string;
   serviceId: ServiceId;
@@ -33,7 +35,9 @@ export type PlaybackApplyTarget = {
 export interface ExtensionProtocolMap {
   'content:watch-report': (payload: WatchReport) => WatchReportResult;
   'party:request-watch-report': () => WatchReport | null;
-  'party:apply-playback-target': (payload: PlaybackApplyTarget) => void;
+  'party:apply-playback-target': (
+    payload: PlaybackApplyTarget,
+  ) => ApplyPlaybackResult | Promise<ApplyPlaybackResult>;
   'popup:create-room': (payload: CreateRoomRequest) => void;
   'popup:join-room': (payload: JoinRoomRequest) => void;
   'popup:leave-room': () => void;

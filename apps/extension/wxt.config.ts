@@ -13,10 +13,10 @@ const defaultPartyKitHost = (process.env['SERVER_URL'] ?? LOCAL_PARTYKIT_HOST)
 
 const connectSrc = [
   "'self'",
-  'http://localhost:1999',
-  'ws://localhost:1999',
-  'http://127.0.0.1:1999',
-  'ws://127.0.0.1:1999',
+  // Watch party server. The host is baked in from SERVER_URL at build time
+  // (wrangler dev is localhost:8787); prod goes through https/wss below.
+  `http://${defaultPartyKitHost}`,
+  `ws://${defaultPartyKitHost}`,
   // WXT dev server (Vite HMR + extension reload). Harmless in production
   // builds since localhost isn't reachable from a packaged extension.
   'http://localhost:3000',

@@ -182,8 +182,19 @@ export class ControlledTabService {
 
   private sendApplyTarget(tabId: number, target: PlaybackApplyTarget): void {
     this.clearLocalUpdateRetryTimer();
-    void sendMessage('party:apply-playback-target', target, { tabId }).catch(() => undefined);
+    // The adapter guarantees execution (retry + verify internally). The
+    // verification timer below stays as a backstop: if the tab reports a
+    // diverging state after the deadline, the target is reissued.
+    void this.awaitApplyResult(tabId, target);
     this.scheduleRemoteApplyVerification(tabId, target.commandId);
+  }
+
+  private async awaitApplyResult(tabId: number, target: PlaybackApplyTarget): Promise<void> {
+    try {
+      await sendMessage('party:apply-playback-target', target, { tabId });
+    } catch {
+      // Best effort; the verification timer reissues if the tab diverges.
+    }
   }
 
   private scheduleRemoteApplyVerification(tabId: number, commandId: string): void {
