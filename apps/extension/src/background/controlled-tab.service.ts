@@ -134,13 +134,15 @@ export class ControlledTabService {
     report: WatchReport,
     room: PartySnapshot,
   ): Promise<WatchReportResult> {
+    await setControlledTab({ tabId, mediaId: report.mediaId });
+    await setLastWarning(null);
+
     if (room.playback.mediaId !== report.mediaId) {
+      await this.navigateControlledTabToRoom(tabId, room.watchUrl, false);
       return 'ignored';
     }
 
     this.sendApplyTarget(tabId, this.playbackSync.beginRemoteApply(room));
-    await setControlledTab({ tabId, mediaId: report.mediaId });
-    await setLastWarning(null);
     return 'accepted';
   }
 

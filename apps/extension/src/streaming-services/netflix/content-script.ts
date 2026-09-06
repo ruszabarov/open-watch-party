@@ -4,7 +4,6 @@ import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 import { onMessage, sendMessage, type WatchReport, type WatchReportReason } from '../../messaging';
 import {
   NETFLIX_PLAYER_REQUEST_SOURCE,
-  parseNetflixPlayerStatusResponse,
   type NetflixPlayerCommand,
   type NetflixRpcRequest,
 } from './player-rpc';
@@ -14,13 +13,29 @@ const NETFLIX = SERVICE_BY_ID.netflix;
 const VIDEO_EVENTS = [
   'play',
   'pause',
+  'seeking',
   'seeked',
+  'emptied',
+  'loadstart',
   'loadedmetadata',
   'durationchange',
   'ended',
+  'error',
 ] as const;
 const SEEK_THRESHOLD_SEC = 1.5;
-const PLAYER_STATUS_TIMEOUT_MS = 250;
+const ECHO_SUPPRESSION_MS = 500;
+
+type PendingEpisodeTarget = {
+  mediaId: string;
+  positionSec: number;
+  playing: boolean;
+};
+
+function getVideo(): HTMLVideoElement | null {
+  const scoped = document.querySelector<HTMLVideoElement>('[data-uia="video-canvas"] video');
+  if (scoped) return scoped;
+  return document.querySelector<HTMLVideoElement>('video');
+}
 
 function sendPlayerCommand(command: NetflixPlayerCommand): void {
   window.postMessage(
@@ -39,6 +54,7 @@ function reasonForVideoEvent(type: string): WatchReportReason {
       return 'play';
     case 'pause':
       return 'pause';
+    case 'seeking':
     case 'seeked':
       return 'seek';
     default:
@@ -49,13 +65,10 @@ function reasonForVideoEvent(type: string): WatchReportReason {
 export function runNetflixContentScript(ctx: ContentScriptContext): void {
   let activeVideo: HTMLVideoElement | null = null;
   let pendingFrame: number | null = null;
+  let suppressUntilMs = 0;
+  let pendingEpisode: PendingEpisodeTarget | null = null;
 
-  const readMediaId = (): string | null => {
-    const mediaId = NETFLIX.extractMediaId(new URL(location.href));
-    if (!activeVideo || mediaId === null) return null;
-
-    return mediaId;
-  };
+  const readMediaId = (): string | null => NETFLIX.extractMediaId(new URL(location.href));
 
   const readWatchReport = (reason: WatchReportReason = 'snapshot'): WatchReport | null => {
     const mediaId = readMediaId();
@@ -73,66 +86,57 @@ export function runNetflixContentScript(ctx: ContentScriptContext): void {
     };
   };
 
-  const requestPlayerStatus = (): Promise<boolean | null> => {
-    const requestId = crypto.randomUUID();
+  const buildCommand = (positionSec: number, playing: boolean): NetflixPlayerCommand =>
+    activeVideo && Math.abs(activeVideo.currentTime - positionSec) > SEEK_THRESHOLD_SEC
+      ? { playing, positionMs: Math.round(positionSec * 1000) }
+      : { playing };
 
-    return new Promise((resolve) => {
-      const timeout = window.setTimeout(() => {
-        window.removeEventListener('message', onResponse);
-        resolve(null);
-      }, PLAYER_STATUS_TIMEOUT_MS);
+  const flushPendingEpisode = () => {
+    if (!pendingEpisode || !activeVideo) return;
+    if (readMediaId() !== pendingEpisode.mediaId) return;
+    if (!isVideoTimelineReady(activeVideo)) return;
 
-      const onResponse = (event: MessageEvent) => {
-        if (event.source !== window) return;
-
-        const data = parseNetflixPlayerStatusResponse(event);
-        if (data === null || data.requestId !== requestId) {
-          return;
-        }
-
-        window.clearTimeout(timeout);
-        window.removeEventListener('message', onResponse);
-        resolve(data.hasPlayer);
-      };
-
-      window.addEventListener('message', onResponse);
-      window.postMessage(
-        {
-          source: NETFLIX_PLAYER_REQUEST_SOURCE,
-          requestId,
-          query: 'status',
-        } satisfies NetflixRpcRequest,
-        '*',
-      );
-    });
+    const { positionSec, playing } = pendingEpisode;
+    pendingEpisode = null;
+    suppressUntilMs = Date.now() + ECHO_SUPPRESSION_MS;
+    sendPlayerCommand(buildCommand(positionSec, playing));
   };
 
   const sendPlaybackReport = (reason: WatchReportReason = 'snapshot') => {
-    void requestPlayerStatus().then((hasPlayer) => {
-      if (hasPlayer === false) return;
+    // Own corrections re-emit video events; downgrade them so the follower
+    // doesn't broadcast back and fight the leader.
+    if (reason !== 'snapshot' && Date.now() < suppressUntilMs) {
+      reason = 'snapshot';
+    }
 
-      const report = readWatchReport(reason);
-      if (report) sendReport(report);
-    });
+    const report = readWatchReport(reason);
+    if (report) sendReport(report);
   };
 
-  const onVideoEvent = (event: Event) => {
-    refresh(reasonForVideoEvent(event.type));
+  const bindVideo = () => {
+    const video = getVideo();
+    if (video === activeVideo) return;
+
+    if (activeVideo) {
+      for (const e of VIDEO_EVENTS) activeVideo.removeEventListener(e, onVideoEvent);
+    }
+    activeVideo = video;
+    if (activeVideo) {
+      for (const e of VIDEO_EVENTS) activeVideo.addEventListener(e, onVideoEvent);
+    }
   };
 
   function refresh(reason: WatchReportReason = 'snapshot') {
-    const video = document.querySelector<HTMLVideoElement>('video');
-    if (video !== activeVideo) {
-      if (activeVideo) {
-        for (const e of VIDEO_EVENTS) activeVideo.removeEventListener(e, onVideoEvent);
-      }
-      activeVideo = video;
-      if (activeVideo) {
-        for (const e of VIDEO_EVENTS) activeVideo.addEventListener(e, onVideoEvent);
-      }
-    }
+    bindVideo();
+    flushPendingEpisode();
     sendPlaybackReport(reason);
   }
+
+  const onVideoEvent = (event: Event) => {
+    bindVideo();
+    flushPendingEpisode();
+    sendPlaybackReport(reasonForVideoEvent(event.type));
+  };
 
   const scheduleRefresh = () => {
     if (pendingFrame !== null) return;
@@ -142,15 +146,23 @@ export function runNetflixContentScript(ctx: ContentScriptContext): void {
     });
   };
 
+  // URL is the episode identity (video.src is an opaque MSE blob URL).
+  // Location changes fire synchronously on SPA navigation, well before the
+  // new video node exists; the pending target applies on loadedmetadata.
+  const onLocationChange = () => {
+    scheduleRefresh();
+  };
+
   const pageObserver = new MutationObserver(scheduleRefresh);
   pageObserver.observe(document.documentElement, { childList: true, subtree: true });
   ctx.onInvalidated(() => pageObserver.disconnect());
 
-  ctx.addEventListener(window, 'wxt:locationchange', scheduleRefresh);
+  ctx.addEventListener(window, 'wxt:locationchange', onLocationChange);
+  ctx.addEventListener(window, 'popstate', onLocationChange);
 
   ctx.onInvalidated(
     onMessage('party:request-watch-report', () => {
-      refresh();
+      bindVideo();
       return readWatchReport();
     }),
   );
@@ -160,15 +172,26 @@ export function runNetflixContentScript(ctx: ContentScriptContext): void {
       if (data.serviceId !== 'netflix') return;
 
       const mediaId = readMediaId();
-      if (!activeVideo || mediaId === null || mediaId !== data.playback.mediaId) return;
-
       const { positionSec, playing } = data.playback;
-      const command: NetflixPlayerCommand =
-        Math.abs(activeVideo.currentTime - positionSec) > SEEK_THRESHOLD_SEC
-          ? { playing, positionMs: Math.round(positionSec * 1000) }
-          : { playing };
 
-      sendPlayerCommand(command);
+      // Follow-the-leader: navigate instead of silently dropping
+      // cross-episode commands. The queued target applies once the new
+      // video node is ready (flushPendingEpisode on loadedmetadata).
+      if (mediaId === null || mediaId !== data.playback.mediaId) {
+        pendingEpisode = {
+          mediaId: data.playback.mediaId,
+          positionSec,
+          playing,
+        };
+        suppressUntilMs = Date.now() + ECHO_SUPPRESSION_MS;
+        location.href = NETFLIX.buildCanonicalWatchUrl(data.playback.mediaId);
+        return;
+      }
+
+      if (!activeVideo) return;
+
+      suppressUntilMs = Date.now() + ECHO_SUPPRESSION_MS;
+      sendPlayerCommand(buildCommand(positionSec, playing));
     }),
   );
 

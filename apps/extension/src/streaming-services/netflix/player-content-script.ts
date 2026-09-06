@@ -8,7 +8,7 @@ import type { NetflixPlayer } from './window';
 
 export const NETFLIX_PLAYER_VIDEO_RECONCILE_DELAY_MS = 150;
 
-type NetflixPlaybackVideo = Pick<HTMLVideoElement, 'currentTime' | 'paused' | 'pause' | 'play'>;
+type NetflixPlaybackVideo = Pick<HTMLVideoElement, 'paused' | 'pause' | 'play'>;
 
 type NetflixPlayerCommandOptions = {
   getPlayer?: () => NetflixPlayer | null;
@@ -29,6 +29,8 @@ function getNetflixPlayer(): NetflixPlayer | null {
 }
 
 function getVideo(): HTMLVideoElement | null {
+  const scoped = document.querySelector<HTMLVideoElement>('[data-uia="video-canvas"] video');
+  if (scoped) return scoped;
   return document.querySelector<HTMLVideoElement>('video');
 }
 
@@ -47,7 +49,10 @@ function applyViaApi(command: NetflixPlayerCommand, player: NetflixPlayer): bool
     }
 
     if (command.playing) {
-      player.play();
+      const result = player.play();
+      if (result instanceof Promise) {
+        result.catch(() => undefined);
+      }
     } else {
       player.pause();
     }
@@ -58,52 +63,36 @@ function applyViaApi(command: NetflixPlayerCommand, player: NetflixPlayer): bool
   }
 }
 
-function applySeekViaVideoElement(
+// DOM writes are play/pause only. Never write currentTime on Netflix:
+// it crashes the player ("Whoops! Something went wrong"). Seeks without
+// a working Cadmium API are dropped rather than risk the error page.
+function applyPlayingViaVideoElement(
   command: NetflixPlayerCommand,
   video: NetflixPlaybackVideo,
 ): void {
-  if (command.positionMs === undefined) return;
-
-  const positionSec = command.positionMs / 1000;
-  if (!Number.isFinite(positionSec)) return;
-
   try {
-    video.currentTime = positionSec;
-  } catch {
-    // Netflix may reject direct timeline writes; this is only a fallback.
-  }
-}
-
-function applyPlaybackViaVideoElement(
-  command: NetflixPlayerCommand,
-  video: NetflixPlaybackVideo,
-): void {
-  if (command.playing && video.paused) {
-    try {
-      void video.play().catch(() => undefined);
-    } catch {
-      // Best effort; Netflix's internal player is the authoritative path.
-    }
-  } else if (!command.playing && !video.paused) {
-    try {
+    if (command.playing && video.paused) {
+      const result = video.play();
+      if (result instanceof Promise) {
+        result.catch(() => undefined);
+      }
+    } else if (!command.playing && !video.paused) {
       video.pause();
-    } catch {
-      // Best effort.
     }
+  } catch {
+    // Best effort; the Cadmium API is the authoritative path.
   }
-}
-
-function applyViaVideoElement(command: NetflixPlayerCommand, video: NetflixPlaybackVideo): void {
-  applySeekViaVideoElement(command, video);
-  applyPlaybackViaVideoElement(command, video);
 }
 
 function defaultSchedule(callback: () => void, delayMs: number): void {
   window.setTimeout(callback, delayMs);
 }
 
-// Netflix's player API is authoritative for sync, but a delayed video-element
-// reconcile keeps the page controls from getting stuck if the API lags behind.
+// The Cadmium API is authoritative. The delayed video-element reconcile is a
+// one-shot watchdog (not polling): it fixes the case where the API accepts
+// the command but the <video> element lags behind and would otherwise report
+// a stale paused state back. Stale generations are dropped so rapid
+// play->pause sequences always settle on the latest command.
 export function applyNetflixPlayerCommand(
   command: NetflixPlayerCommand,
   options: NetflixPlayerCommandOptions = {},
@@ -119,7 +108,7 @@ export function applyNetflixPlayerCommand(
       if (currentCommandGeneration !== commandGeneration) return;
 
       const video = readTarget(readVideo);
-      if (video) applyPlaybackViaVideoElement(command, video);
+      if (video) applyPlayingViaVideoElement(command, video);
     }, NETFLIX_PLAYER_VIDEO_RECONCILE_DELAY_MS);
     return;
   }
@@ -127,7 +116,7 @@ export function applyNetflixPlayerCommand(
   const video = readTarget(readVideo);
   if (!video) return;
 
-  applyViaVideoElement(command, video);
+  applyPlayingViaVideoElement(command, video);
 }
 
 export function runNetflixPlayerContentScript(): void {

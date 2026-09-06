@@ -1,6 +1,6 @@
 export type NetflixPlayer = {
   seek(positionMs: number): void;
-  play(): void;
+  play(): void | Promise<void>;
   pause(): void;
 };
 

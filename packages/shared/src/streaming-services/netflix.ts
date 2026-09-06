@@ -4,7 +4,7 @@ const NETFLIX_HOST_RE = /(^|\.)netflix\.com$/;
 const NETFLIX_MEDIA_ID_RE = /^[0-9]+$/;
 
 function extractNetflixMediaId(url: URL): string | null {
-  return url.pathname.match(/^\/watch\/(\d+)\/?$/)?.[1] ?? null;
+  return url.pathname.match(/^\/watch\/(\d+)/)?.[1] ?? null;
 }
 
 export const NETFLIX_SERVICE = {
