@@ -8,6 +8,7 @@
     "**/.wxt/**",
     "**/coverage/**",
     "**/dist/**",
+    "**/.wrangler/**",
     "**/*.svelte",
     ".agent/**",
     ".agents/**",
