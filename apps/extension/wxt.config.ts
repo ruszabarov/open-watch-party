@@ -47,7 +47,7 @@ export default defineConfig({
       64: '/64.png',
       128: '/128.png',
     },
-    permissions: ['storage', 'tabs'],
+    permissions: ['storage', 'tabs', 'clipboardWrite'],
     browser_specific_settings: {
       gecko: {
         id: 'open-watch-party@ruszabarov.com',

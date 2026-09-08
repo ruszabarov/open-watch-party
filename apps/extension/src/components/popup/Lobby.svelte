@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Clapperboard, LoaderCircle, X } from '@lucide/svelte';
+  import { Clapperboard, LoaderCircle } from '@lucide/svelte';
   import { Button } from '~/components/ui/button/index.js';
   import { Input } from '~/components/ui/input/index.js';
   import type { ActiveTabSummary } from '~/entrypoints/popup/active-tab.js';
@@ -12,10 +12,8 @@
     isBusy: boolean;
     createError: string | null;
     joinError: string | null;
-    showHint: boolean;
     onCreateRoom: () => void;
     onJoinRoom: (code: string) => void;
-    onDismissHint: () => void;
   }
 
   const {
@@ -23,10 +21,8 @@
     isBusy,
     createError,
     joinError,
-    showHint,
     onCreateRoom,
     onJoinRoom,
-    onDismissHint,
   }: Props = $props();
 
   let joinCode = $state('');
@@ -106,24 +102,6 @@
           {/if}
         </p>
       </div>
-    </div>
-  {/if}
-
-  {#if showHint}
-    <div class="flex items-start gap-2 rounded-md bg-muted px-3 py-2">
-      <p class="m-0 min-w-0 flex-1 text-xs leading-5 text-muted-foreground">
-        <span class="font-medium text-foreground">How it works:</span>
-        create a room on a video page, then share the code with friends.
-      </p>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        class="shrink-0 text-muted-foreground"
-        aria-label="Dismiss tip"
-        onclick={onDismissHint}
-      >
-        <X size={12} strokeWidth={1.75} aria-hidden="true" />
-      </Button>
     </div>
   {/if}
 

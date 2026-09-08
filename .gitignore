@@ -12,6 +12,7 @@ node_modules
 stats.html
 stats-*.json
 .wxt
+.wrangler
 .partykit
 .wrangler
 web-ext.config.ts

@@ -14,6 +14,7 @@
   import { Button } from '~/components/ui/button/index.js';
   import * as Tooltip from '~/components/ui/tooltip/index.js';
   import { Check, Copy, LoaderCircle, LogOut } from '@lucide/svelte';
+import copyToClipboard from 'copy-to-clipboard';
   import { resolveMediaTitle } from '~/components/popup/room-state-format.js';
 
   interface Props {
@@ -128,21 +129,15 @@
   async function handleCopyInvite(): Promise<void> {
     if (!room) return;
     copyFailed = false;
-    try {
-      await navigator.clipboard.writeText(room.roomCode);
-      copied = true;
-      if (copyTimer) clearTimeout(copyTimer);
-      copyTimer = setTimeout(() => {
-        copied = false;
-      }, 2000);
-    } catch {
-      copied = false;
+    if (!(await copyToClipboard(room.roomCode))) {
       copyFailed = true;
+      return;
     }
-  }
-
-  function handleDismissHint(): void {
-    void updateSettings({ ...settings, hideHint: true }).catch(() => undefined);
+    copied = true;
+    if (copyTimer) clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => {
+      copied = false;
+    }, 1500);
   }
 
   function dismissBackgroundError(): void {
@@ -216,10 +211,8 @@
       {isBusy}
       {createError}
       {joinError}
-      showHint={!settings.hideHint}
       onCreateRoom={handleCreateRoom}
       onJoinRoom={handleJoinRoom}
-      onDismissHint={handleDismissHint}
     />
   {/if}
 
@@ -243,10 +236,10 @@
           <Tooltip.Root>
             <Tooltip.Trigger>
               {#snippet child({ props })}
-                <Button class="min-w-0 flex-1 font-semibold" onclick={handleCopyInvite} {...props}>
+                <Button {...props} class="min-w-0 flex-1 font-semibold" onclick={handleCopyInvite} disabled={copied}>
                   {#if copied}
                     <Check size={14} strokeWidth={2} aria-hidden="true" />
-                    <span aria-live="polite">Copied</span>
+                    <span aria-live="polite">Code copied</span>
                   {:else}
                     <Copy size={14} strokeWidth={1.75} aria-hidden="true" />
                     <span aria-live="polite">Copy invite</span>
@@ -262,13 +255,13 @@
             <Tooltip.Trigger>
               {#snippet child({ props })}
                 <Button
+                  {...props}
                   variant="ghost"
                   size="icon"
                   class="shrink-0 text-muted-foreground hover:text-destructive"
                   aria-label="Leave room"
                   onclick={handleLeaveRoom}
                   disabled={isBusy}
-                  {...props}
                 >
                   <LogOut size={16} strokeWidth={1.75} aria-hidden="true" />
                 </Button>
