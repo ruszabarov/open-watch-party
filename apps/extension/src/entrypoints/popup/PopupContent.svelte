@@ -28,6 +28,7 @@ import copyToClipboard from 'copy-to-clipboard';
   let commandError: string | null = $state(null);
   let settingsError: string | null = $state(null);
   let lastAction: 'create' | 'join' | 'leave' | null = $state(null);
+  let dismissedInfoSeq = $state(0);
   let dismissedErrorSeq = $state(0);
   let dismissedWarningSeq = $state(0);
   let isBusy = $state(false);
@@ -36,11 +37,14 @@ import copyToClipboard from 'copy-to-clipboard';
   let copyFailed = $state(false);
   let copyTimer: ReturnType<typeof setTimeout> | null = $state(null);
 
-  const room = $derived(backgroundState.room);
+  const room = $derived(backgroundState.connectionStatus === 'connected' ? backgroundState.room : null);
   const session = $derived(backgroundState.session);
   const isActiveRoomOnCurrentTab = $derived(
     backgroundState.controlledTab != null &&
       backgroundState.controlledTab.tabId === activeTab.tabId,
+  );
+  const backgroundInfo = $derived(
+    backgroundState.lastInfoSeq !== dismissedInfoSeq ? backgroundState.lastInfo : null,
   );
   const backgroundError = $derived(
     backgroundState.lastErrorSeq !== dismissedErrorSeq ? backgroundState.lastError : null,
@@ -202,7 +206,7 @@ import copyToClipboard from 'copy-to-clipboard';
       />
       <div class="min-w-0 flex-1 leading-snug">
         <p class="m-0 text-sm font-semibold">Reconnecting to room {session.roomCode}</p>
-        <p class="m-0 text-xs leading-5 text-muted-foreground">{leaveFirstMessage}</p>
+        <p class="m-0 text-xs leading-5 text-muted-foreground">We'll reconnect automatically. You can leave at any time.</p>
       </div>
     </div>
   {:else}
@@ -216,6 +220,11 @@ import copyToClipboard from 'copy-to-clipboard';
     />
   {/if}
 
+  {#if !settingsOpen && backgroundInfo}
+    <div class="mt-3">
+      <Notice kind="info" message={backgroundInfo} onDismiss={() => { dismissedInfoSeq = backgroundState.lastInfoSeq; }} />
+    </div>
+  {/if}
   {#if !settingsOpen && backgroundError}
     <div class="mt-3">
       <Notice kind="error" message={backgroundError} onDismiss={dismissBackgroundError} />

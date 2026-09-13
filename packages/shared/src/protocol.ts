@@ -133,9 +133,15 @@ const ackEnvelopeSchema = z.object({
   result: z.json().optional(),
 });
 
+const operationFailureSchema = z.object({
+  ok: z.literal(false),
+  code: z.enum(['ROOM_NOT_FOUND', 'ROOM_CODE_TAKEN', 'REQUEST_FAILED']),
+  error: z.string(),
+});
+
 const ackResultSchema = z.discriminatedUnion('ok', [
   z.object({ ok: z.literal(true), data: z.json() }),
-  z.object({ ok: z.literal(false), error: z.string() }),
+  operationFailureSchema,
 ]);
 
 const serverEventSchema = z.discriminatedUnion('type', [
@@ -145,6 +151,7 @@ const serverEventSchema = z.discriminatedUnion('type', [
 ]);
 
 export const roomStateSchema = z.object({
+  expiresAt: z.number(),
   roomCode: z.string().min(1),
   serviceId: serviceIdSchema,
   members: z.map(z.string(), partyMemberSchema),
@@ -169,7 +176,8 @@ export type ServerMessage =
   | ServerEvent;
 export type RoomState = z.output<typeof roomStateSchema>;
 
-export type OperationResult<T> = { ok: true; data: T } | { ok: false; error: string };
+export type OperationFailure = z.output<typeof operationFailureSchema>;
+export type OperationResult<T> = { ok: true; data: T } | OperationFailure;
 
 export function decodeAckPayload<T>(
   result: Extract<ServerMessage, { type: 'ack' }>['result'],
@@ -181,7 +189,7 @@ export function decodeAckPayload<T>(
 
   const parsed = schema.safeParse(result.data);
   if (!parsed.success) {
-    return { ok: false, error: INVALID_SERVER_RESPONSE_ERROR };
+    return { ok: false, code: 'REQUEST_FAILED', error: INVALID_SERVER_RESPONSE_ERROR };
   }
 
   return { ok: true, data: parsed.data };
@@ -220,7 +228,9 @@ export function parseServerSocketData(data: string | ArrayBuffer | Blob): Server
       return {
         type: 'ack',
         rid: ackEnvelope.data.rid,
-        result: result.success ? result.data : { ok: false, error: INVALID_SERVER_RESPONSE_ERROR },
+        result: result.success
+          ? result.data
+          : { ok: false, code: 'REQUEST_FAILED', error: INVALID_SERVER_RESPONSE_ERROR },
       };
     }
 

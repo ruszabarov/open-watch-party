@@ -40,25 +40,25 @@ export class RealtimeConnection {
 
   private readonly socket: PartySocket;
   private readonly pending = new Map<string, PendingRequest>();
-  private readonly reconnectHandlers = new Set<() => void | Promise<void>>();
-  private readonly connectionErrorHandlers = new Set<(error: Error) => void>();
+  private readonly openHandlers = new Set<() => void | Promise<void>>();
+  private disconnectedHandler: (() => void) | null = null;
+  private closed = false;
   private roomStateHandler: ((snapshot: PartySnapshot) => void) | null = null;
   private playbackStateHandler: ((snapshot: PartySnapshot) => void) | null = null;
   private roomClosedHandler: ((event: RoomClosedEvent) => void) | null = null;
-  private hasOpened = false;
   private requestSeq = 0;
 
   constructor(options: { host: string; room: string }) {
     this.room = options.room;
-    this.socket = new PartySocket({ host: options.host, room: options.room });
+    this.socket = new PartySocket({
+      host: options.host,
+      room: options.room,
+      maxEnqueuedMessages: 0,
+    });
 
     this.socket.addEventListener('open', () => {
-      if (this.hasOpened) {
-        for (const handler of this.reconnectHandlers) {
-          void handler();
-        }
-      } else {
-        this.hasOpened = true;
+      for (const handler of this.openHandlers) {
+        void handler();
       }
     });
 
@@ -66,11 +66,9 @@ export class RealtimeConnection {
       this.handleMessage(event.data);
     });
 
-    this.socket.addEventListener('error', () => {
-      const error = new Error('Lost connection to the watch party server.');
-      for (const handler of this.connectionErrorHandlers) {
-        handler(error);
-      }
+    this.socket.addEventListener('close', () => {
+      this.rejectPending();
+      if (!this.closed) this.disconnectedHandler?.();
     });
   }
 
@@ -110,16 +108,29 @@ export class RealtimeConnection {
     this.roomClosedHandler = handler;
   }
 
-  onReconnect(handler: () => void | Promise<void>): void {
-    this.reconnectHandlers.add(handler);
+  onOpen(handler: () => void | Promise<void>): void {
+    this.openHandlers.add(handler);
   }
 
-  onConnectionError(handler: (error: Error) => void): void {
-    this.connectionErrorHandlers.add(handler);
+  onDisconnected(handler: () => void): void {
+    this.disconnectedHandler = handler;
+  }
+
+  get isOpen(): boolean {
+    return !this.closed && this.socket.readyState === SOCKET_OPEN;
+  }
+
+  reconnect(): void {
+    if (this.isOpen) this.socket.reconnect();
   }
 
   disconnect(): void {
+    this.closed = true;
     this.socket.close();
+    this.rejectPending();
+  }
+
+  private rejectPending(): void {
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(new Error('Connection closed.'));
@@ -129,6 +140,7 @@ export class RealtimeConnection {
 
   private async request(body: ClientRequest): Promise<AckResult> {
     await this.waitForOpen();
+    if (!this.isOpen) throw new Error('Connection closed.');
 
     const rid = `r${(this.requestSeq += 1)}`;
     const envelope: ClientMessage =
@@ -175,15 +187,15 @@ export class RealtimeConnection {
   }
 
   private waitForOpen(): Promise<void> {
-    if (this.socket.readyState === SOCKET_OPEN) {
-      return Promise.resolve();
-    }
+    if (this.closed) return Promise.reject(new Error('Connection closed.'));
+    if (this.isOpen) return Promise.resolve();
 
     return new Promise<void>((resolve, reject) => {
       const cleanup = () => {
         clearTimeout(timer);
         this.socket.removeEventListener('open', handleOpen);
         this.socket.removeEventListener('error', handleError);
+        this.socket.removeEventListener('close', handleError);
       };
       const handleOpen = () => {
         cleanup();
@@ -200,6 +212,7 @@ export class RealtimeConnection {
 
       this.socket.addEventListener('open', handleOpen);
       this.socket.addEventListener('error', handleError);
+      this.socket.addEventListener('close', handleError);
     });
   }
 }

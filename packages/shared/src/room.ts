@@ -16,6 +16,8 @@ import { SERVICE_BY_ID } from './streaming-services';
 
 export type { RoomState } from './protocol';
 
+export const ROOM_IDLE_TTL_MS = 6 * 60 * 60 * 1_000;
+
 const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const ROOM_CODE_LENGTH = 6;
 
@@ -49,6 +51,7 @@ export function createRoomState(
 
   return {
     roomCode,
+    expiresAt: now + ROOM_IDLE_TTL_MS,
     serviceId: request.serviceId,
     members: new Map<string, PartyMember>(),
     playback,

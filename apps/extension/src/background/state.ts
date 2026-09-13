@@ -1,4 +1,4 @@
-import { storage } from '#imports';
+import { storage } from 'wxt/utils/storage';
 import type { PartySnapshot, ServiceId } from '@open-watch-party/shared';
 
 export type SessionInfo = {
@@ -13,6 +13,9 @@ export type ControlledTabInfo = {
 };
 
 export type BackgroundState = {
+  readonly connectionStatus: 'idle' | 'reconnecting' | 'connected';
+  readonly lastInfo: string | null;
+  readonly lastInfoSeq: number;
   readonly session: SessionInfo | null;
   readonly room: PartySnapshot | null;
   readonly controlledTab: ControlledTabInfo | null;
@@ -25,6 +28,9 @@ export type BackgroundState = {
 };
 
 export const initialBackgroundState: BackgroundState = {
+  connectionStatus: 'idle',
+  lastInfo: null,
+  lastInfoSeq: 0,
   session: null,
   room: null,
   controlledTab: null,
@@ -34,12 +40,9 @@ export const initialBackgroundState: BackgroundState = {
   lastWarningSeq: 0,
 };
 
-export const backgroundStateItem = storage.defineItem<BackgroundState>(
-  'session:watch-party-state',
-  {
-    fallback: initialBackgroundState,
-  },
-);
+export const backgroundStateItem = storage.defineItem<BackgroundState>('session:watch-party', {
+  fallback: initialBackgroundState,
+});
 
 export async function getBackgroundState(): Promise<BackgroundState> {
   return backgroundStateItem.getValue();
@@ -64,17 +67,37 @@ export async function setJoinedSession(session: SessionInfo, room: PartySnapshot
     ...state,
     session,
     room,
+    connectionStatus: 'connected',
+    lastInfo: null,
     lastError: null,
   }));
 }
 
-export async function leaveRoomState(): Promise<void> {
-  return replaceBackgroundState(initialBackgroundState);
+export async function leaveRoomState(message: string | null = null): Promise<void> {
+  return updateBackgroundState((state) => ({
+    ...initialBackgroundState,
+    lastErrorSeq: state.lastErrorSeq,
+    lastWarningSeq: state.lastWarningSeq,
+    lastInfo: message,
+    lastInfoSeq: state.lastInfoSeq + (message === null ? 0 : 1),
+  }));
+}
+
+export async function markSessionReconnecting(roomCode: string): Promise<void> {
+  return updateBackgroundState((state) =>
+    state.session?.roomCode === roomCode
+      ? {
+          ...state,
+          connectionStatus: 'reconnecting',
+          lastError: null,
+        }
+      : state,
+  );
 }
 
 export async function updateSessionRoom(room: PartySnapshot): Promise<void> {
   return updateBackgroundState((state) => {
-    if (!state.session) {
+    if (state.session?.roomCode !== room.roomCode || state.connectionStatus !== 'connected') {
       return state;
     }
 
@@ -116,10 +139,6 @@ async function updateBackgroundState(
     const current = await getBackgroundState();
     await backgroundStateItem.setValue(updater(current));
   });
-}
-
-async function replaceBackgroundState(state: BackgroundState): Promise<void> {
-  return enqueueBackgroundStateWrite(() => backgroundStateItem.setValue(state));
 }
 
 async function enqueueBackgroundStateWrite(write: () => Promise<void>): Promise<void> {
