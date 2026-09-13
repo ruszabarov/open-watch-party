@@ -1,4 +1,4 @@
-import { storage } from '#imports';
+import { storage } from 'wxt/utils/storage';
 import { sanitizeMemberName } from '@open-watch-party/shared';
 
 export interface Settings {
