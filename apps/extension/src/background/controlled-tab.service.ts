@@ -46,6 +46,8 @@ export class ControlledTabService {
       return 'ignored';
     }
 
+    if (state.connectionStatus !== 'connected') return 'retry';
+
     if (report.serviceId !== room.serviceId) {
       return 'ignored';
     }
@@ -68,8 +70,8 @@ export class ControlledTabService {
   }
 
   async applySnapshotToControlledTab(): Promise<void> {
-    const { room, controlledTab } = await getBackgroundState();
-    if (!room || !controlledTab) return;
+    const { room, controlledTab, connectionStatus } = await getBackgroundState();
+    if (!room || !controlledTab || connectionStatus !== 'connected') return;
 
     const tabMediaId = await this.readWatchTabMediaId(controlledTab.tabId, room.serviceId);
     if (tabMediaId !== room.playback.mediaId) {

@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { CircleAlert, TriangleAlert, X } from '@lucide/svelte';
+  import { CircleAlert, Info, TriangleAlert, X } from '@lucide/svelte';
   import * as Alert from '~/components/ui/alert/index.js';
   import { Button } from '~/components/ui/button/index.js';
 
   interface Props {
-    kind: 'error' | 'warning';
+    kind: 'error' | 'warning' | 'info';
     message: string;
     onDismiss?: () => void;
   }
@@ -20,6 +20,8 @@
   <span class="inline-flex shrink-0" aria-hidden="true">
     {#if kind === 'error'}
       <CircleAlert size={14} strokeWidth={1.75} />
+    {:else if kind === 'info'}
+      <Info size={14} strokeWidth={1.75} />
     {:else}
       <TriangleAlert size={14} strokeWidth={1.75} />
     {/if}

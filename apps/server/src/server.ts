@@ -6,12 +6,14 @@ import {
   parseClientSocketMessage,
   removeRoomMember,
   ROOM_CODE_TAKEN_ERROR,
+  ROOM_IDLE_TTL_MS,
   roomStateSchema,
   thrownErrorSchema,
   toPartySnapshot,
   upsertRoomMember,
   type ClientMessage,
   type OperationResult,
+  type OperationFailure,
   type PartySnapshot,
   type RoomLeaveResponse,
   type RoomResponse,
@@ -19,7 +21,7 @@ import {
   type ServerEvent,
 } from '@open-watch-party/shared';
 
-const ROOM_IDLE_TTL_MS = 6 * 60 * 60 * 1_000;
+const ROOM_DEPARTURE_TTL_MS = 2 * 60 * 1_000;
 const PLAYBACK_TOKENS_PER_SECOND = 10;
 const PLAYBACK_BURST_CAPACITY = 20;
 
@@ -70,6 +72,10 @@ export class WatchPartyServer extends Server<Env> {
 
     const message = parsed.message;
     try {
+      if (this.state && this.state.expiresAt <= Date.now()) {
+        await this.expireRoom();
+      }
+
       switch (message.type) {
         case 'room:create':
           await this.handleCreate(message, sender);
@@ -102,7 +108,24 @@ export class WatchPartyServer extends Server<Env> {
   }
 
   override async onAlarm(): Promise<void> {
-    const room = this.state ?? (await this.readStoredRoom());
+    if (!this.state) return;
+
+    // An already queued alarm must not expire a room that has since rejoined.
+    if (this.state.expiresAt > Date.now()) {
+      await this.ctx.storage.setAlarm(this.state.expiresAt);
+      return;
+    }
+
+    await this.expireRoom();
+  }
+
+  private async expireRoom(): Promise<void> {
+    const room = this.state;
+    await this.clearRoom();
+    this.state = null;
+    this.memberConnections.clear();
+    this.buckets.clear();
+
     if (room) {
       this.broadcastMessage({
         type: 'room:closed',
@@ -110,14 +133,9 @@ export class WatchPartyServer extends Server<Env> {
       });
     }
 
-    for (const connection of this.getConnections()) {
-      connection.close();
+    for (const connection of this.getConnections<ConnectionState>()) {
+      if (connection.state?.memberId) connection.close();
     }
-
-    this.state = null;
-    this.memberConnections.clear();
-    this.buckets.clear();
-    await this.clearRoom();
   }
 
   private async handleCreate(
@@ -125,7 +143,7 @@ export class WatchPartyServer extends Server<Env> {
     sender: Connection<ConnectionState>,
   ): Promise<void> {
     if (this.state) {
-      this.ack(sender, message.rid, failure(ROOM_CODE_TAKEN_ERROR));
+      this.ack(sender, message.rid, failure(ROOM_CODE_TAKEN_ERROR, 'ROOM_CODE_TAKEN'));
       return;
     }
 
@@ -147,7 +165,7 @@ export class WatchPartyServer extends Server<Env> {
     sender: Connection<ConnectionState>,
   ): Promise<void> {
     if (!this.state) {
-      this.ack(sender, message.rid, failure(ROOM_NOT_FOUND_ERROR));
+      this.ack(sender, message.rid, failure(ROOM_NOT_FOUND_ERROR, 'ROOM_NOT_FOUND'));
       return;
     }
 
@@ -172,6 +190,7 @@ export class WatchPartyServer extends Server<Env> {
 
     const roomCode = this.state.roomCode;
     this.forgetMember(memberId);
+    sender.setState(null);
     await this.removeMember(memberId);
 
     this.ack(sender, message.rid, success({ roomCode }));
@@ -193,7 +212,7 @@ export class WatchPartyServer extends Server<Env> {
     }
 
     if (!this.state) {
-      this.ack(sender, message.rid, failure(ROOM_NOT_FOUND_ERROR));
+      this.ack(sender, message.rid, failure(ROOM_NOT_FOUND_ERROR, 'ROOM_NOT_FOUND'));
       return;
     }
 
@@ -232,12 +251,6 @@ export class WatchPartyServer extends Server<Env> {
     }
 
     removeRoomMember(this.state, memberId);
-
-    if (this.state.members.size === 0) {
-      this.state = null;
-      await this.clearRoom();
-      return;
-    }
 
     await this.saveRoom();
     this.broadcastMessage({ type: 'room:state', snapshot: toPartySnapshot(this.state) });
@@ -294,13 +307,20 @@ export class WatchPartyServer extends Server<Env> {
       return;
     }
 
-    await this.ctx.storage.put(STORAGE_KEY, this.state);
-    await this.ctx.storage.setAlarm(Date.now() + ROOM_IDLE_TTL_MS);
+    const room = this.state;
+    room.expiresAt =
+      Date.now() + (room.members.size === 0 ? ROOM_DEPARTURE_TTL_MS : ROOM_IDLE_TTL_MS);
+    await this.ctx.storage.transaction(async (storage) => {
+      await storage.put(STORAGE_KEY, room);
+      await storage.setAlarm(room.expiresAt);
+    });
   }
 
   private async clearRoom(): Promise<void> {
-    await this.ctx.storage.deleteAll();
-    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.transaction(async (storage) => {
+      await storage.delete(STORAGE_KEY);
+      await storage.deleteAlarm();
+    });
   }
 
   private ack(
@@ -326,6 +346,9 @@ function success<T>(data: T): OperationResult<T> {
   return { ok: true, data };
 }
 
-function failure(error: string): OperationResult<never> {
-  return { ok: false, error };
+function failure(
+  error: string,
+  code: OperationFailure['code'] = 'REQUEST_FAILED',
+): OperationResult<never> {
+  return { ok: false, code, error };
 }
