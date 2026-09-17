@@ -12,20 +12,6 @@ export type NetflixAdapterDeps = {
   getVideo: () => HTMLVideoElement | null;
   readMediaId: () => string | null;
   sendCommand: (command: NetflixPlayerCommand) => void;
-  navigateToMedia: (mediaId: string) => void;
-  markSuppressed: () => void;
-};
-
-export type NetflixAdapter = VideoAdapter & {
-  // Applies a target queued by an earlier cross-episode navigation once the
-  // new video node is ready. Called on every refresh/loadedmetadata.
-  flushPending: () => void;
-};
-
-type PendingEpisodeTarget = {
-  mediaId: string;
-  positionSec: number;
-  playing: boolean;
 };
 
 function buildCommand(
@@ -40,59 +26,31 @@ function buildCommand(
     : { playing };
 }
 
-export function createNetflixAdapter(deps: NetflixAdapterDeps): NetflixAdapter {
-  let pending: PendingEpisodeTarget | null = null;
-
-  const sendFor = (video: HTMLVideoElement, positionSec: number, playing: boolean): void => {
-    deps.markSuppressed();
-    deps.sendCommand(buildCommand(video, positionSec, playing));
-  };
-
-  const readSnapshot = (mediaId: string) => () => {
-    const video = deps.getVideo();
-    if (!video || !isVideoTimelineReady(video)) return null;
-    if (deps.readMediaId() !== mediaId) return null;
-    return { currentTime: video.currentTime, paused: video.paused };
-  };
-
+export function createNetflixAdapter(deps: NetflixAdapterDeps): VideoAdapter {
   return {
     async apply(target: PlaybackApplyTarget): Promise<ApplyPlaybackResult> {
       if (target.serviceId !== 'netflix') return 'dropped';
 
-      const { positionSec, playing } = target.playback;
-
-      // Follow-the-leader: navigate instead of silently dropping
-      // cross-episode commands. The queued target applies once the new
-      // video node is ready (flushPending on loadedmetadata).
-      if (deps.readMediaId() !== target.playback.mediaId) {
-        pending = { mediaId: target.playback.mediaId, positionSec, playing };
-        deps.markSuppressed();
-        deps.navigateToMedia(target.playback.mediaId);
-        return 'deferred';
-      }
-
+      // Cross-episode navigation is owned by the background, which reads the
+      // room's canonical URL. The adapter only controls the loaded player.
       const video = deps.getVideo();
       if (!video || !isVideoTimelineReady(video)) return 'dropped';
+      if (deps.readMediaId() !== target.playback.mediaId) return 'dropped';
 
-      sendFor(video, positionSec, playing);
+      const { positionSec, playing } = target.playback;
+      deps.sendCommand(buildCommand(video, positionSec, playing));
 
-      const applied = await waitForMatch(readSnapshot(target.playback.mediaId), target.playback, {
-        attempts: 20,
-        intervalMs: 75,
-      });
+      const applied = await waitForMatch(
+        () => {
+          const current = deps.getVideo();
+          if (!current || !isVideoTimelineReady(current)) return null;
+          if (deps.readMediaId() !== target.playback.mediaId) return null;
+          return { currentTime: current.currentTime, paused: current.paused };
+        },
+        target.playback,
+        { attempts: 20, intervalMs: 75 },
+      );
       return applied ? 'applied' : 'dropped';
-    },
-
-    flushPending(): void {
-      if (!pending) return;
-      if (deps.readMediaId() !== pending.mediaId) return;
-
-      const video = deps.getVideo();
-      if (!video || !isVideoTimelineReady(video)) return;
-
-      const { positionSec, playing } = pending;
-      pending = null;
-      sendFor(video, positionSec, playing);
     },
   };
 }

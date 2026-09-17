@@ -1,9 +1,4 @@
-import {
-  NETFLIX_PLAYER_RESPONSE_SOURCE,
-  parseNetflixRpcRequest,
-  type NetflixPlayerCommand,
-  type NetflixPlayerStatusResponse,
-} from './player-rpc';
+import { parseNetflixRpcRequest, type NetflixPlayerCommand } from './player-rpc';
 import type { NetflixPlayer } from './window';
 
 export const NETFLIX_PLAYER_VIDEO_RECONCILE_DELAY_MS = 150;
@@ -130,18 +125,6 @@ export function runNetflixPlayerContentScript(): void {
       return;
     }
 
-    if ('command' in data) {
-      applyNetflixPlayerCommand(data.command);
-      return;
-    }
-
-    window.postMessage(
-      {
-        source: NETFLIX_PLAYER_RESPONSE_SOURCE,
-        requestId: data.requestId,
-        hasPlayer: getNetflixPlayer() !== null || getVideo() !== null,
-      } satisfies NetflixPlayerStatusResponse,
-      '*',
-    );
+    applyNetflixPlayerCommand(data.command);
   });
 }
