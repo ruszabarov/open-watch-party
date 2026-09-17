@@ -29,6 +29,10 @@ export type PlaybackSyncDecision =
   | { action: 'send-update'; update: PlaybackUpdate }
   | { action: 'reapply-target'; target: PlaybackApplyTarget };
 
+// Outcome of a local playback update round-trip. `retry` means the request can
+// plausibly succeed later; the sender reschedules it.
+export type PlaybackUpdateResult = 'accepted' | 'ignored' | 'retry';
+
 export type PlaybackSyncOptions = {
   now?: () => number;
   positionToleranceSec?: number;
@@ -120,7 +124,7 @@ export class PlaybackSyncEngine {
     return { action: 'send-update', update: reportPlayback };
   }
 
-  markLocalUpdateResult(update: PlaybackUpdate, result: 'accepted' | 'ignored' | 'retry'): boolean {
+  markLocalUpdateResult(update: PlaybackUpdate, result: PlaybackUpdateResult): boolean {
     const pendingLocalUpdate = this.pendingLocalUpdate;
     if (!pendingLocalUpdate || !playbackUpdatesEqual(pendingLocalUpdate.playback, update)) {
       return false;

@@ -1,13 +1,13 @@
 import { browser } from 'wxt/browser';
 import type { PlaybackUpdate, ServiceId } from '@open-watch-party/shared';
-import {
-  sendMessage,
-  type PlaybackApplyTarget,
-  type WatchReport,
-  type WatchReportResult,
-} from '../messaging';
+import { sendMessage, type PlaybackApplyTarget, type WatchReport } from '../messaging';
 import { findServiceByUrl, getServiceDefinition } from '../streaming-services/catalog';
-import { PlaybackSyncEngine, toPlaybackUpdate, type PlaybackSyncDecision } from './playback-sync';
+import {
+  PlaybackSyncEngine,
+  toPlaybackUpdate,
+  type PlaybackSyncDecision,
+  type PlaybackUpdateResult,
+} from './playback-sync';
 import { clearControlledTab, getBackgroundState, setLastWarning } from './state';
 
 const DEFAULT_LOCAL_UPDATE_RETRY_MS = 1_000;
@@ -24,7 +24,7 @@ export class ControlledTabService {
   constructor(
     private readonly options: {
       onControlledTabClosed: () => void;
-      onControlledTabPlaybackReady: (playback: PlaybackUpdate) => Promise<WatchReportResult>;
+      onControlledTabPlaybackReady: (playback: PlaybackUpdate) => Promise<PlaybackUpdateResult>;
     },
   ) {}
 
@@ -43,39 +43,39 @@ export class ControlledTabService {
     this.resetPlaybackSync();
   }
 
-  async handleWatchReport(tabId: number, report: WatchReport): Promise<WatchReportResult> {
+  async handleWatchReport(tabId: number, report: WatchReport): Promise<void> {
     const state = await getBackgroundState();
     const room = state.room;
     if (!room) {
       this.resetPlaybackSync();
-      return 'ignored';
+      return;
     }
 
-    if (state.connectionStatus !== 'connected') return 'retry';
+    if (state.connectionStatus !== 'connected') return;
 
     if (report.serviceId !== room.serviceId) {
-      return 'ignored';
+      return;
     }
 
     // Only the reserved tab may control the room. Reports from other tabs on
     // the same service are ignored, not adopted.
     const controlledTab = state.controlledTab;
     if (!controlledTab || controlledTab.tabId !== tabId) {
-      return 'ignored';
+      return;
     }
 
     // After a navigation the engine has no authority yet, so the first report
     // from the player seeds the room timeline. A report for anything but the
     // room's media is the page still catching up.
     if (!this.playbackSync.hasAuthority()) {
-      if (report.mediaId !== room.playback.mediaId) return 'ignored';
+      if (report.mediaId !== room.playback.mediaId) return;
 
       await setLastWarning(null);
       this.sendApplyTarget(tabId, this.playbackSync.beginRemoteApply(room));
-      return 'accepted';
+      return;
     }
 
-    return this.applyDecision(tabId, this.playbackSync.handleObservation(report));
+    await this.applyDecision(tabId, this.playbackSync.handleObservation(report));
   }
 
   async applySnapshotToControlledTab(): Promise<void> {
@@ -172,13 +172,13 @@ export class ControlledTabService {
     this.options.onControlledTabClosed();
   }
 
-  private applyDecision(tabId: number, decision: PlaybackSyncDecision): Promise<WatchReportResult> {
+  private applyDecision(tabId: number, decision: PlaybackSyncDecision): Promise<void> {
     switch (decision.action) {
       case 'ignore':
-        return Promise.resolve('ignored');
+        return Promise.resolve();
       case 'reapply-target':
         this.sendApplyTarget(tabId, decision.target);
-        return Promise.resolve('ignored');
+        return Promise.resolve();
       case 'send-update':
         return this.dispatchLocalUpdate(decision.update);
     }
@@ -229,18 +229,16 @@ export class ControlledTabService {
     await this.applyDecision(tabId, this.playbackSync.handleRemoteApplyTimeout());
   }
 
-  private async dispatchLocalUpdate(update: PlaybackUpdate): Promise<WatchReportResult> {
+  private async dispatchLocalUpdate(update: PlaybackUpdate): Promise<void> {
     const result = await this.options.onControlledTabPlaybackReady(update);
     const resultApplied = this.playbackSync.markLocalUpdateResult(update, result);
-    if (!resultApplied) return 'ignored';
+    if (!resultApplied) return;
 
     if (result === 'retry') {
       this.scheduleLocalUpdateRetry(update);
     } else {
       this.clearLocalUpdateRetryTimer();
     }
-
-    return result;
   }
 
   private scheduleLocalUpdateRetry(update: PlaybackUpdate): void {

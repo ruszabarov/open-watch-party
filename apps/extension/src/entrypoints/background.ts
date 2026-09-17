@@ -100,12 +100,10 @@ class BackgroundController {
   }
 
   private registerContentHandlers(): void {
-    onMessage('content:watch-report', async ({ data, sender }) => {
-      if (sender.tab?.id !== undefined) {
-        return this.controlledTabService.handleWatchReport(sender.tab.id, data);
-      }
+    onMessage('content:watch-report', ({ data, sender }) => {
+      if (sender.tab?.id === undefined) return;
 
-      return 'ignored';
+      return this.controlledTabService.handleWatchReport(sender.tab.id, data);
     });
   }
 }

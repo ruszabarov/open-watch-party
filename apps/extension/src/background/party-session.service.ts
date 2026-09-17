@@ -16,9 +16,9 @@ import type {
   ServiceId,
 } from '@open-watch-party/shared';
 
-import type { WatchReportResult } from '../messaging';
 import { getSettings } from '../storage/settings';
 import { RealtimeConnection } from './connection.service';
+import type { PlaybackUpdateResult } from './playback-sync';
 import { SessionLifecycle } from './session-lifecycle';
 import {
   clearControlledTab,
@@ -48,7 +48,7 @@ export class PartySessionService {
     },
   ) {}
 
-  async updateRoomPlaybackFromControlledTab(update: PlaybackUpdate): Promise<WatchReportResult> {
+  async updateRoomPlaybackFromControlledTab(update: PlaybackUpdate): Promise<PlaybackUpdateResult> {
     const connection = this.connection;
     try {
       return await this.sendPlaybackUpdate(update);
@@ -160,7 +160,7 @@ export class PartySessionService {
     throw new Error('Could not find an available room code. Please try again.');
   }
 
-  private async sendPlaybackUpdate(update: PlaybackUpdate): Promise<WatchReportResult> {
+  private async sendPlaybackUpdate(update: PlaybackUpdate): Promise<PlaybackUpdateResult> {
     const state = await getBackgroundState();
     if (!state.session) {
       return 'ignored';
