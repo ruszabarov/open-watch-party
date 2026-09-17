@@ -8,6 +8,8 @@ import type {
   ServiceId,
 } from './protocol';
 import {
+  ROOM_CODE_ALPHABET,
+  ROOM_CODE_LENGTH,
   sanitizeMemberName,
   sanitizeOptionalTitle,
   MAX_PLAYBACK_POSITION_SEC as maxPlaybackPositionSec,
@@ -17,13 +19,6 @@ import { SERVICE_BY_ID } from './streaming-services';
 export type { RoomState } from './protocol';
 
 export const ROOM_IDLE_TTL_MS = 6 * 60 * 60 * 1_000;
-
-const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const ROOM_CODE_LENGTH = 6;
-
-export function normalizeRoomCode(roomCode: string): string {
-  return roomCode.trim().toUpperCase();
-}
 
 export function createRoomCode(): string {
   const values = new Uint32Array(ROOM_CODE_LENGTH);
@@ -37,6 +32,7 @@ export function createRoomCode(): string {
 export function createRoomState(
   roomCode: string,
   request: CreateRoomRequest,
+  memberId: string,
   now = Date.now(),
 ): RoomState {
   assertValidMediaId(request.serviceId, request.initialPlayback.mediaId);
@@ -46,7 +42,7 @@ export function createRoomState(
     serviceId: request.serviceId,
     title: sanitizeOptionalTitle(request.initialPlayback.title),
     updatedAt: now,
-    sourceMemberId: request.memberId,
+    sourceMemberId: memberId,
   };
 
   return {
@@ -105,15 +101,19 @@ export function applyPlaybackUpdate(
   return playback;
 }
 
+// Invariant: `positionSec` is the playback position at `updatedAt`. Projecting
+// a playing state forward moves both fields together so the result can be
+// projected again without double-counting elapsed time.
 export function resolvePlaybackState(playback: PlaybackState, now = Date.now()): PlaybackState {
   if (!playback.playing) {
-    return playback;
+    return playback.updatedAt === now ? playback : { ...playback, updatedAt: now };
   }
 
   const elapsedSec = Math.max(0, (now - playback.updatedAt) / 1000);
   return {
     ...playback,
     positionSec: normalizePosition(playback.positionSec + elapsedSec),
+    updatedAt: now,
   };
 }
 

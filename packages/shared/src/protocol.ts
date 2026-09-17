@@ -1,9 +1,16 @@
 import { z } from 'zod';
+import { SERVICE_IDS } from './streaming-services';
 export type { ServiceId } from './streaming-services';
 
 export const MAX_MEMBER_NAME_LENGTH = 64;
 export const MAX_TITLE_LENGTH = 256;
 export const MAX_PLAYBACK_POSITION_SEC = 48 * 60 * 60;
+// Upper bound on a raw client frame before it is parsed. Keeps malformed or
+// hostile payloads from reaching JSON.parse and Zod.
+export const MAX_CLIENT_MESSAGE_LENGTH = 8_192;
+// Playback drift accepted before a correction is issued. Shared by the sync
+// engine and every service adapter so both sides agree on the boundary.
+export const PLAYBACK_POSITION_TOLERANCE_SEC = 1.5;
 
 // Shared so the server and the extension cannot drift on the wording.
 export const ACTIVE_ROOM_EXISTS_ERROR =
@@ -14,6 +21,18 @@ export const ACTIVE_ROOM_EXISTS_ERROR =
 export const ROOM_CODE_TAKEN_ERROR = 'Room code already in use.';
 
 export const INVALID_SERVER_RESPONSE_ERROR = 'Invalid server response.';
+
+export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+export const ROOM_CODE_LENGTH = 6;
+export const ROOM_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{6}$/;
+
+export function normalizeRoomCode(roomCode: string): string {
+  return roomCode.trim().toUpperCase();
+}
+
+export function isValidRoomCode(roomCode: string): boolean {
+  return ROOM_CODE_PATTERN.test(roomCode);
+}
 
 const CONTROL_CHARACTERS_PATTERN = /\p{Cc}+/gu;
 
@@ -29,23 +48,16 @@ export function sanitizeOptionalTitle(value: string | undefined): string {
   return sanitizeText(value, MAX_TITLE_LENGTH) || '';
 }
 
-export const thrownErrorSchema = z.instanceof(Error);
-
-export function failureMessage(
-  parsed: ReturnType<typeof thrownErrorSchema.safeParse>,
-  fallback: string,
-): string {
-  return parsed.success ? parsed.data.message || fallback : fallback;
+export function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 const roomCodeSchema = z
   .string()
-  .trim()
-  .transform((value) => value.toUpperCase())
-  .pipe(z.string().min(1));
-const memberIdSchema = z.string().trim().min(1);
+  .transform(normalizeRoomCode)
+  .pipe(z.string().regex(ROOM_CODE_PATTERN));
 const mediaIdSchema = z.string().trim().min(1);
-const serviceIdSchema = z.enum(['netflix', 'youtube']);
+const serviceIdSchema = z.enum(SERVICE_IDS);
 const positionSchema = z.number().min(0).max(MAX_PLAYBACK_POSITION_SEC);
 const memberNameSchema = z.string().transform(sanitizeMemberName);
 const titleSchema = z
@@ -63,7 +75,6 @@ const playbackDraftSchema = z.object({
 });
 
 const createRoomRequestSchema = z.object({
-  memberId: memberIdSchema,
   memberName: memberNameSchema,
   serviceId: serviceIdSchema,
   initialPlayback: playbackDraftSchema,
@@ -71,7 +82,6 @@ const createRoomRequestSchema = z.object({
 
 const joinRoomRequestSchema = z.object({
   roomCode: roomCodeSchema,
-  memberId: memberIdSchema,
   memberName: memberNameSchema,
 });
 
@@ -120,6 +130,7 @@ const clientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('room:create'), rid: ridSchema, payload: createRoomRequestSchema }),
   z.object({ type: z.literal('room:join'), rid: ridSchema, payload: joinRoomRequestSchema }),
   z.object({ type: z.literal('room:leave'), rid: ridSchema }),
+  z.object({ type: z.literal('room:heartbeat'), rid: ridSchema }),
   z.object({
     type: z.literal('playback:update'),
     rid: ridSchema,
