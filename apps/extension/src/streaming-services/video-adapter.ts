@@ -1,8 +1,10 @@
+import { PLAYBACK_POSITION_TOLERANCE_SEC } from '@open-watch-party/shared';
+
 import type { ApplyPlaybackResult, PlaybackApplyTarget } from '../messaging';
 
 export type { ApplyPlaybackResult };
 
-export const APPLY_SEEK_THRESHOLD_SEC = 1.5;
+export const APPLY_SEEK_THRESHOLD_SEC = PLAYBACK_POSITION_TOLERANCE_SEC;
 
 // Black box contract: the core sends a desired target and awaits the result.
 // All service quirks (retries, internal player APIs, ads, navigation) live

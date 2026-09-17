@@ -1,8 +1,12 @@
-import type { PartySnapshot, PlaybackUpdate } from '@open-watch-party/shared';
+import {
+  PLAYBACK_POSITION_TOLERANCE_SEC,
+  type PartySnapshot,
+  type PlaybackUpdate,
+  type ServiceId,
+} from '@open-watch-party/shared';
 
 import type { PlaybackApplyTarget, WatchReport } from '../messaging';
 
-const DEFAULT_POSITION_TOLERANCE_SEC = 1.5;
 const DEFAULT_REMOTE_APPLY_TIMEOUT_MS = 2_500;
 
 type SyncPoint = {
@@ -12,7 +16,6 @@ type SyncPoint = {
 
 type RemoteApplyState = {
   target: PlaybackApplyTarget;
-  syncPoint: SyncPoint;
   deadlineMs: number;
 };
 
@@ -32,40 +35,51 @@ export type PlaybackSyncOptions = {
   remoteApplyTimeoutMs?: number;
 };
 
+// The engine keeps one authoritative room timeline (a playback position anchored
+// to a local monotonic instant). Local reports only ever confirm or challenge
+// that timeline; they never replace it, so buffering, ads, or a stalled player
+// cannot silently pull the room out of sync.
 export class PlaybackSyncEngine {
   private readonly now: () => number;
   private readonly positionToleranceSec: number;
   private readonly remoteApplyTimeoutMs: number;
   private commandSeq = 0;
-  private lastAccepted: SyncPoint | null = null;
+  private authority: SyncPoint | null = null;
+  private serviceId: ServiceId | null = null;
   private pendingLocalUpdate: SyncPoint | null = null;
   private remoteApply: RemoteApplyState | null = null;
 
   constructor(options: PlaybackSyncOptions = {}) {
     this.now = options.now ?? Date.now;
-    this.positionToleranceSec = options.positionToleranceSec ?? DEFAULT_POSITION_TOLERANCE_SEC;
+    this.positionToleranceSec = options.positionToleranceSec ?? PLAYBACK_POSITION_TOLERANCE_SEC;
     this.remoteApplyTimeoutMs = options.remoteApplyTimeoutMs ?? DEFAULT_REMOTE_APPLY_TIMEOUT_MS;
   }
 
   reset(): void {
-    this.lastAccepted = null;
+    this.authority = null;
+    this.serviceId = null;
     this.pendingLocalUpdate = null;
     this.remoteApply = null;
   }
 
+  /** False until a room timeline has been seeded for the current media. */
+  hasAuthority(): boolean {
+    return this.authority !== null;
+  }
+
   beginRemoteApply(snapshot: PartySnapshot): PlaybackApplyTarget {
-    const issuedAtMs = this.now();
-    const target = this.createTarget(snapshot);
-
+    this.serviceId = snapshot.serviceId;
     this.pendingLocalUpdate = null;
-    this.lastAccepted = { playback: target.playback, observedAtMs: issuedAtMs };
-    this.remoteApply = {
-      target,
-      syncPoint: { playback: target.playback, observedAtMs: issuedAtMs },
-      deadlineMs: issuedAtMs + this.remoteApplyTimeoutMs,
-    };
-
-    return target;
+    return this.issueTarget(
+      snapshot.serviceId,
+      {
+        mediaId: snapshot.playback.mediaId,
+        title: snapshot.playback.title ?? '',
+        positionSec: snapshot.playback.positionSec,
+        playing: snapshot.playback.playing,
+      },
+      this.now(),
+    );
   }
 
   handleObservation(report: WatchReport): PlaybackSyncDecision {
@@ -73,11 +87,7 @@ export class PlaybackSyncEngine {
     const reportPlayback = toPlaybackUpdate(report);
 
     if (this.remoteApply) {
-      if (this.matchesSyncPoint(report, this.remoteApply.syncPoint, observedAtMs)) {
-        this.lastAccepted = {
-          playback: reportPlayback,
-          observedAtMs,
-        };
+      if (this.matchesAuthority(report, observedAtMs)) {
         this.remoteApply = null;
         return { action: 'ignore' };
       }
@@ -86,23 +96,23 @@ export class PlaybackSyncEngine {
         return { action: 'ignore' };
       }
 
-      const target = this.reissueRemoteApply(this.remoteApply, observedAtMs);
-      return { action: 'reapply-target', target };
+      return this.reissue(observedAtMs);
     }
 
-    const activeLocalUpdate = this.pendingLocalUpdate ?? this.lastAccepted;
-    if (activeLocalUpdate && this.matchesSyncPoint(report, activeLocalUpdate, observedAtMs)) {
-      this.reanchorAcceptedPlayback(reportPlayback, observedAtMs);
+    // A local intent is in flight; wait for the server to accept or reject it.
+    if (this.pendingLocalUpdate) {
+      return { action: 'ignore' };
+    }
+
+    if (this.matchesAuthority(report, observedAtMs)) {
       return { action: 'ignore' };
     }
 
     if (!isSyncIntent(report)) {
-      this.reanchorAcceptedPlayback(reportPlayback, observedAtMs);
-      return { action: 'ignore' };
+      return this.authority && this.serviceId ? this.reissue(observedAtMs) : { action: 'ignore' };
     }
 
-    if (activeLocalUpdate && !this.shouldBroadcastIntent(report, activeLocalUpdate, observedAtMs)) {
-      this.reanchorAcceptedPlayback(reportPlayback, observedAtMs);
+    if (this.authority && !this.shouldBroadcastIntent(report, this.authority, observedAtMs)) {
       return { action: 'ignore' };
     }
 
@@ -117,10 +127,7 @@ export class PlaybackSyncEngine {
     }
 
     if (result === 'accepted') {
-      this.lastAccepted = {
-        playback: update,
-        observedAtMs: pendingLocalUpdate.observedAtMs,
-      };
+      this.authority = { playback: update, observedAtMs: pendingLocalUpdate.observedAtMs };
       this.pendingLocalUpdate = null;
       return true;
     }
@@ -164,44 +171,44 @@ export class PlaybackSyncEngine {
       return { action: 'ignore' };
     }
 
-    const target = this.reissueRemoteApply(this.remoteApply, observedAtMs);
-    return { action: 'reapply-target', target };
+    return this.reissue(observedAtMs);
   }
 
-  private createTarget(snapshot: PartySnapshot): PlaybackApplyTarget {
-    return {
+  private issueTarget(
+    serviceId: ServiceId,
+    playback: PlaybackUpdate,
+    issuedAtMs: number,
+  ): PlaybackApplyTarget {
+    const target: PlaybackApplyTarget = {
       commandId: `p${(this.commandSeq += 1)}`,
-      serviceId: snapshot.serviceId,
-      playback: {
-        mediaId: snapshot.playback.mediaId,
-        title: snapshot.playback.title ?? '',
-        positionSec: snapshot.playback.positionSec,
-        playing: snapshot.playback.playing,
-      },
-    };
-  }
-
-  private reissueRemoteApply(state: RemoteApplyState, issuedAtMs: number): PlaybackApplyTarget {
-    const target = {
-      ...state.target,
-      commandId: `p${(this.commandSeq += 1)}`,
-      playback: playbackAt(state.syncPoint, issuedAtMs),
+      serviceId,
+      playback,
     };
 
-    state.target = target;
-    state.syncPoint = { playback: target.playback, observedAtMs: issuedAtMs };
-    state.deadlineMs = issuedAtMs + this.remoteApplyTimeoutMs;
+    this.authority = { playback, observedAtMs: issuedAtMs };
+    this.remoteApply = { target, deadlineMs: issuedAtMs + this.remoteApplyTimeoutMs };
     return target;
   }
 
-  private matchesSyncPoint(
-    report: WatchReport,
-    syncPoint: SyncPoint,
-    observedAtMs: number,
-  ): boolean {
-    const expectedPlayback = playbackAt(syncPoint, observedAtMs);
+  private reissue(issuedAtMs: number): PlaybackSyncDecision {
+    if (!this.authority || !this.serviceId) return { action: 'ignore' };
 
-    return playbackMatches(report, expectedPlayback, this.positionToleranceSec);
+    const target = this.issueTarget(
+      this.serviceId,
+      playbackAt(this.authority, issuedAtMs),
+      issuedAtMs,
+    );
+    return { action: 'reapply-target', target };
+  }
+
+  private matchesAuthority(report: WatchReport, observedAtMs: number): boolean {
+    if (!this.authority) return false;
+
+    return playbackMatches(
+      report,
+      playbackAt(this.authority, observedAtMs),
+      this.positionToleranceSec,
+    );
   }
 
   private shouldBroadcastIntent(
@@ -228,15 +235,6 @@ export class PlaybackSyncEngine {
         return false;
     }
   }
-
-  private reanchorAcceptedPlayback(playback: PlaybackUpdate, observedAtMs: number): void {
-    if (this.pendingLocalUpdate) return;
-    if (!this.lastAccepted) return;
-    if (playback.mediaId !== this.lastAccepted.playback.mediaId) return;
-    if (playback.playing !== this.lastAccepted.playback.playing) return;
-
-    this.lastAccepted = { playback, observedAtMs };
-  }
 }
 
 function isSyncIntent(report: WatchReport): boolean {
@@ -255,12 +253,12 @@ export function toPlaybackUpdate(report: WatchReport): PlaybackUpdate {
 export function playbackMatches(
   report: WatchReport,
   expected: PlaybackUpdate,
-  positionToleranceSec = DEFAULT_POSITION_TOLERANCE_SEC,
+  positionToleranceSec = PLAYBACK_POSITION_TOLERANCE_SEC,
 ): boolean {
   return (
     report.mediaId === expected.mediaId &&
     report.playing === expected.playing &&
-    Math.abs(report.positionSec - expected.positionSec) < positionToleranceSec
+    Math.abs(report.positionSec - expected.positionSec) <= positionToleranceSec
   );
 }
 
