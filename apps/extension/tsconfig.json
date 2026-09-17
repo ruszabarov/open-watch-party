@@ -1,6 +1,19 @@
 {
   "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {
+    // WXT's generated config enables `strict` but omits the workspace's extra
+    // safety flags. Restate them here so the extension is held to the same bar
+    // as the shared package and server.
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUnusedLabels": false,
+    "allowUnreachableCode": false,
     "paths": {
       "@": ["./src"],
       "@/*": ["./src/*"],
