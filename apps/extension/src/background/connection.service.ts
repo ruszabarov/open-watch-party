@@ -25,6 +25,7 @@ type ClientRequest =
   | { type: 'room:create'; payload: CreateRoomRequest }
   | { type: 'room:join'; payload: JoinRoomRequest }
   | { type: 'room:leave' }
+  | { type: 'room:heartbeat' }
   | { type: 'playback:update'; payload: PlaybackUpdate };
 
 type AckResult = Extract<ServerMessage, { type: 'ack' }>['result'];
@@ -96,6 +97,11 @@ export class RealtimeConnection {
     );
   }
 
+  /** Keeps the socket active so the extension service worker is not suspended. */
+  async ping(): Promise<void> {
+    await this.request({ type: 'room:heartbeat' });
+  }
+
   onRoomState(handler: (snapshot: PartySnapshot) => void): void {
     this.roomStateHandler = handler;
   }
@@ -143,8 +149,7 @@ export class RealtimeConnection {
     if (!this.isOpen) throw new Error('Connection closed.');
 
     const rid = `r${(this.requestSeq += 1)}`;
-    const envelope: ClientMessage =
-      body.type === 'room:leave' ? { type: 'room:leave', rid } : { ...body, rid };
+    const envelope: ClientMessage = 'payload' in body ? { ...body, rid } : { type: body.type, rid };
 
     return new Promise<AckResult>((resolve, reject) => {
       const timer = setTimeout(() => {

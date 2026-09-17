@@ -1,5 +1,5 @@
 import { browser } from 'wxt/browser';
-import type { PartySnapshot, PlaybackUpdate, ServiceId } from '@open-watch-party/shared';
+import type { PlaybackUpdate, ServiceId } from '@open-watch-party/shared';
 import {
   sendMessage,
   type PlaybackApplyTarget,
@@ -8,7 +8,7 @@ import {
 } from '../messaging';
 import { findServiceByUrl, getServiceDefinition } from '../streaming-services/catalog';
 import { PlaybackSyncEngine, toPlaybackUpdate, type PlaybackSyncDecision } from './playback-sync';
-import { clearControlledTab, getBackgroundState, setControlledTab, setLastWarning } from './state';
+import { clearControlledTab, getBackgroundState, setLastWarning } from './state';
 
 const DEFAULT_LOCAL_UPDATE_RETRY_MS = 1_000;
 
@@ -38,6 +38,11 @@ export class ControlledTabService {
     });
   }
 
+  /** Drop all sync state and pending timers when the session ends. */
+  reset(): void {
+    this.resetPlaybackSync();
+  }
+
   async handleWatchReport(tabId: number, report: WatchReport): Promise<WatchReportResult> {
     const state = await getBackgroundState();
     const room = state.room;
@@ -52,21 +57,25 @@ export class ControlledTabService {
       return 'ignored';
     }
 
+    // Only the reserved tab may control the room. Reports from other tabs on
+    // the same service are ignored, not adopted.
     const controlledTab = state.controlledTab;
-    if (!controlledTab) {
-      return this.adoptTabForRoom(tabId, report, room);
-    }
-
-    if (controlledTab.tabId !== tabId) {
+    if (!controlledTab || controlledTab.tabId !== tabId) {
       return 'ignored';
     }
 
-    await setControlledTab({
-      tabId,
-      mediaId: report.mediaId,
-    });
+    // After a navigation the engine has no authority yet, so the first report
+    // from the player seeds the room timeline. A report for anything but the
+    // room's media is the page still catching up.
+    if (!this.playbackSync.hasAuthority()) {
+      if (report.mediaId !== room.playback.mediaId) return 'ignored';
 
-    return this.applyDecision(controlledTab.tabId, this.playbackSync.handleObservation(report));
+      await setLastWarning(null);
+      this.sendApplyTarget(tabId, this.playbackSync.beginRemoteApply(room));
+      return 'accepted';
+    }
+
+    return this.applyDecision(tabId, this.playbackSync.handleObservation(report));
   }
 
   async applySnapshotToControlledTab(): Promise<void> {
@@ -83,9 +92,19 @@ export class ControlledTabService {
     await setLastWarning(null);
   }
 
+  /** Periodic drift correction for quiet playback with no media events. */
+  async reconcile(): Promise<void> {
+    const { room, controlledTab, connectionStatus } = await getBackgroundState();
+    if (!room || !controlledTab) return;
+    if (connectionStatus !== 'connected') return;
+
+    const report = await this.requestWatchReportFromTab(controlledTab.tabId);
+    if (report) await this.handleWatchReport(controlledTab.tabId, report);
+  }
+
   async navigateControlledTabToRoom(tabId: number, watchUrl: string, active = true): Promise<void> {
-    if ((await getBackgroundState()).controlledTab?.tabId === tabId) {
-      await clearControlledTab();
+    const { controlledTab } = await getBackgroundState();
+    if (controlledTab?.tabId === tabId) {
       this.resetPlaybackSync();
     }
     await setLastWarning(null);
@@ -131,23 +150,6 @@ export class ControlledTabService {
     }
   }
 
-  private async adoptTabForRoom(
-    tabId: number,
-    report: WatchReport,
-    room: PartySnapshot,
-  ): Promise<WatchReportResult> {
-    await setControlledTab({ tabId, mediaId: report.mediaId });
-    await setLastWarning(null);
-
-    if (room.playback.mediaId !== report.mediaId) {
-      await this.navigateControlledTabToRoom(tabId, room.watchUrl, false);
-      return 'ignored';
-    }
-
-    this.sendApplyTarget(tabId, this.playbackSync.beginRemoteApply(room));
-    return 'accepted';
-  }
-
   private async handleTabUpdated(tabId: number, url: string | undefined): Promise<void> {
     const { controlledTab, session } = await getBackgroundState();
     if (tabId !== controlledTab?.tabId || !url || !session) {
@@ -184,9 +186,8 @@ export class ControlledTabService {
 
   private sendApplyTarget(tabId: number, target: PlaybackApplyTarget): void {
     this.clearLocalUpdateRetryTimer();
-    // The adapter guarantees execution (retry + verify internally). The
-    // verification timer below stays as a backstop: if the tab reports a
-    // diverging state after the deadline, the target is reissued.
+    // Navigation and retries belong to the background. The adapter only reads
+    // and controls its own player; the verification timer reissues on drift.
     void this.awaitApplyResult(tabId, target);
     this.scheduleRemoteApplyVerification(tabId, target.commandId);
   }

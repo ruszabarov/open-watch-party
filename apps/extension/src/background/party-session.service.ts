@@ -1,10 +1,8 @@
-import { browser } from 'wxt/browser';
 import {
   ACTIVE_ROOM_EXISTS_ERROR,
   createRoomCode,
-  failureMessage,
+  errorMessage,
   normalizeRoomCode,
-  thrownErrorSchema,
 } from '@open-watch-party/shared';
 
 import type {
@@ -21,14 +19,15 @@ import type {
 import type { WatchReportResult } from '../messaging';
 import { getSettings } from '../storage/settings';
 import { RealtimeConnection } from './connection.service';
+import { SessionLifecycle } from './session-lifecycle';
 import {
+  clearControlledTab,
   getBackgroundState,
   leaveRoomState,
   markSessionReconnecting,
   reportBackgroundError,
   setControlledTab,
   setJoinedSession,
-  setLastWarning,
   updateSessionRoom,
 } from './state';
 
@@ -36,13 +35,16 @@ const PARTYKIT_HOST = __DEFAULT_SERVER_URL__;
 const ROOM_CODE_ATTEMPTS = 5;
 
 export class PartySessionService {
+  private readonly lifecycle = new SessionLifecycle();
   private connection: RealtimeConnection | null = null;
   private sessionVersion = 0;
   private rejoinTask: Promise<void> | null = null;
+  private needsRejoin = false;
 
   constructor(
     private readonly options: {
       onRoomSnapshotChanged: () => void;
+      onSessionEnded: () => void;
     },
   ) {}
 
@@ -55,65 +57,93 @@ export class PartySessionService {
       const state = await getBackgroundState();
       if (!state.session) return 'ignored';
       if (state.connectionStatus === 'connected' && connection?.isOpen) {
-        await reportBackgroundError(
-          failureMessage(thrownErrorSchema.safeParse(error), 'Unexpected error.'),
-        );
+        await reportBackgroundError(errorMessage(error, 'Unexpected error.'));
       }
       return 'retry';
     }
   }
 
-  resumeStoredSession(): Promise<void> {
-    return this.rejoinRoom();
-  }
+  /** Keeps the room socket active so the browser does not suspend it. */
+  async heartbeat(): Promise<void> {
+    const state = await getBackgroundState();
+    if (!state.session || state.connectionStatus !== 'connected') return;
 
-  async createRoom(tabId: number, serviceId: ServiceId, playback: PlaybackUpdate): Promise<void> {
-    await this.assertNoActiveSession();
-
-    const settings = await getSettings();
-
-    const response = await this.createRoomWithUniqueCode({
-      memberId: await this.ensureMemberId(),
-      memberName: settings.memberName,
-      serviceId,
-      initialPlayback: playback,
-    });
-
-    await setControlledTab({ tabId, mediaId: playback.mediaId });
-    await this.applyRoomResponse(response, true);
-  }
-
-  async joinRoom(roomCode: string): Promise<RoomResponse> {
-    await this.assertNoActiveSession();
-    const settings = await getSettings();
-
-    const normalized = normalizeRoomCode(roomCode);
-    const response = this.unwrapAckResponse(
-      await this.ensureConnection(normalized).joinRoom({
-        roomCode: normalized,
-        memberId: await this.ensureMemberId(),
-        memberName: settings.memberName,
-      }),
-    );
-
-    await this.applyRoomResponse(response);
-    return response;
-  }
-
-  async leaveRoom(): Promise<void> {
-    this.sessionVersion += 1;
-    this.rejoinTask = null;
     const connection = this.connection;
-    this.connection = null;
-    await leaveRoomState();
+    if (!connection?.isOpen) return;
 
     try {
-      if (connection?.isOpen) await connection.leaveRoom();
+      await connection.ping();
     } catch {
-      // Best effort; local departure must not depend on the network.
-    } finally {
-      connection?.disconnect();
+      // The reconnect handler owns recovery; heartbeat failures are expected.
     }
+  }
+
+  resumeStoredSession(): Promise<void> {
+    return this.lifecycle.run(() => this.rejoinRoom());
+  }
+
+  createRoom(tabId: number, serviceId: ServiceId, playback: PlaybackUpdate): Promise<void> {
+    return this.lifecycle.run(async () => {
+      await this.assertNoActiveSession();
+      await setControlledTab({ tabId });
+
+      try {
+        const settings = await getSettings();
+        const response = await this.createRoomWithUniqueCode({
+          memberName: settings.memberName,
+          serviceId,
+          initialPlayback: playback,
+        });
+        await this.applyRoomResponse(response, true);
+      } catch (error) {
+        await clearControlledTab();
+        throw error;
+      }
+    });
+  }
+
+  joinRoom(roomCode: string, tabId: number): Promise<RoomResponse> {
+    return this.lifecycle.run(async () => {
+      await this.assertNoActiveSession();
+      await setControlledTab({ tabId });
+
+      try {
+        const settings = await getSettings();
+        const normalized = normalizeRoomCode(roomCode);
+        const response = this.unwrapAckResponse(
+          await this.ensureConnection(normalized).joinRoom({
+            roomCode: normalized,
+            memberName: settings.memberName,
+          }),
+        );
+
+        await this.applyRoomResponse(response);
+        return response;
+      } catch (error) {
+        await clearControlledTab();
+        throw error;
+      }
+    });
+  }
+
+  leaveRoom(): Promise<void> {
+    return this.lifecycle.run(async () => {
+      this.sessionVersion += 1;
+      this.rejoinTask = null;
+      this.needsRejoin = false;
+      const connection = this.connection;
+      this.connection = null;
+      await leaveRoomState();
+      this.options.onSessionEnded();
+
+      try {
+        if (connection?.isOpen) await connection.leaveRoom();
+      } catch {
+        // Best effort; local departure must not depend on the network.
+      } finally {
+        connection?.disconnect();
+      }
+    });
   }
 
   // The room code is the PartyKit party id, so it is generated client-side. A
@@ -141,12 +171,6 @@ export class PartySessionService {
       return 'retry';
     }
 
-    const controlledMediaId = state.controlledTab?.mediaId ?? null;
-    if (controlledMediaId !== null && controlledMediaId !== update.mediaId) {
-      await setLastWarning('Local media no longer matches the active room.');
-      return 'ignored';
-    }
-
     const snapshot = await this.readSessionResponse(
       connection,
       await connection.updatePlayback(update),
@@ -154,13 +178,6 @@ export class PartySessionService {
     if (!snapshot) return 'ignored';
     await updateSessionRoom(snapshot);
     return 'accepted';
-  }
-
-  private async ensureMemberId(): Promise<string> {
-    return (
-      (await getBackgroundState()).session?.memberId ??
-      `${browser.runtime.id}:${crypto.randomUUID()}`
-    );
   }
 
   private async assertNoActiveSession(): Promise<void> {
@@ -180,11 +197,13 @@ export class PartySessionService {
     this.connection = connection;
 
     connection.onDisconnected(() => {
-      if (this.connection === connection) void markSessionReconnecting(roomCode);
+      if (this.connection !== connection) return;
+      this.needsRejoin = true;
+      void markSessionReconnecting(roomCode);
     });
 
     connection.onOpen(() => {
-      if (this.connection === connection) return this.rejoinRoom();
+      if (this.connection === connection && this.needsRejoin) void this.resumeStoredSession();
     });
 
     connection.onRoomState((snapshot) => {
@@ -215,8 +234,9 @@ export class PartySessionService {
     const version = this.sessionVersion;
     const previousConnection = this.connection;
     const session = (await getBackgroundState()).session;
-    if (!session || this.sessionVersion !== version || this.connection !== previousConnection)
+    if (!session || this.sessionVersion !== version || this.connection !== previousConnection) {
       return;
+    }
 
     const connection = this.ensureConnection(session.roomCode);
     await markSessionReconnecting(session.roomCode);
@@ -228,7 +248,6 @@ export class PartySessionService {
         connection,
         await connection.joinRoom({
           roomCode: session.roomCode,
-          memberId: session.memberId,
           memberName: settings.memberName,
         }),
       );
@@ -270,12 +289,15 @@ export class PartySessionService {
 
     this.closeConnection();
     await leaveRoomState(message);
+    this.options.onSessionEnded();
   }
 
   private async applyRoomResponse(
     response: RoomResponse,
     applySnapshotToControlledTab = false,
   ): Promise<void> {
+    this.needsRejoin = false;
+
     const nextSession = {
       roomCode: response.snapshot.roomCode,
       memberId: response.memberId,
@@ -296,6 +318,7 @@ export class PartySessionService {
   private closeConnection(): void {
     this.sessionVersion += 1;
     this.rejoinTask = null;
+    this.needsRejoin = false;
     const connection = this.connection;
     this.connection = null;
     connection?.disconnect();

@@ -9,7 +9,6 @@ export type SessionInfo = {
 
 export type ControlledTabInfo = {
   readonly tabId: number;
-  readonly mediaId: string;
 };
 
 export type BackgroundState = {
