@@ -17,11 +17,9 @@
     "@webext-core/messaging": "^3.0.2",
     "copy-to-clipboard": "^4.0.2",
     "partysocket": "^1.2.0",
-    "ts-pattern": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@internationalized/date": "^3.12.2",
     "@lucide/svelte": "^1.20.0",
     "@open-watch-party/shared": "workspace:*",
     "@tailwindcss/vite": "latest",

@@ -9,7 +9,6 @@
     "**/coverage/**",
     "**/dist/**",
     "**/.wrangler/**",
-    "**/*.svelte",
     ".agent/**",
     ".agents/**",
     ".claude/**",
@@ -20,7 +19,6 @@
     ".pi/**",
     ".roo/**",
     ".windsurf/**",
-    ".zed/**",
-    "tools/oxlint/anti-slop/**"
+    ".zed/**"
   ]
 }
