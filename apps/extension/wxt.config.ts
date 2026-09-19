@@ -1,4 +1,4 @@
-import { defineConfig, type ConfigEnv } from 'wxt';
+import { defineConfig } from 'wxt';
 import tailwindcss from '@tailwindcss/vite';
 import { SUPPORTED_SERVICE_CONTENT_MATCHES } from '@open-watch-party/shared';
 
@@ -11,20 +11,31 @@ const LOOPBACK_HOST_PATTERN = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 export default defineConfig({
   srcDir: 'src',
   modules: ['@wxt-dev/module-svelte'],
+  hooks: {
+    'build:before': (wxt) => {
+      if (
+        wxt.config.mode !== 'development' &&
+        process.env['CI'] &&
+        !process.env['SERVER_URL']?.trim()
+      ) {
+        throw new Error('SERVER_URL must be set when building the extension for release.');
+      }
+    },
+  },
   zip: {
     // Firefox source review needs the whole pnpm workspace, not just the
     // extension directory, so the reviewer can install and rebuild it.
     sourcesRoot: '../..',
     excludeSources: ['apps/server/**', '.github/**', 'docs/**', 'scripts/**', 'tests/**'],
   },
-  vite: (env) => ({
+  vite: () => ({
     plugins: [tailwindcss()],
     define: {
-      __DEFAULT_SERVER_URL__: JSON.stringify(resolveServerHost(env)),
+      __DEFAULT_SERVER_URL__: JSON.stringify(resolveServerHost()),
     },
   }),
   manifest: (env) => {
-    const connectSrc = buildConnectSrc(resolveServerHost(env), env.mode === 'development');
+    const connectSrc = buildConnectSrc(resolveServerHost(), env.mode === 'development');
 
     return {
       name: 'Open Watch Party',
@@ -59,15 +70,10 @@ export default defineConfig({
 
 // partysocket takes a bare host and derives ws/wss itself, so strip any
 // protocol or trailing slash and validate the remainder.
-function resolveServerHost(env: ConfigEnv): string {
+function resolveServerHost(): string {
   const raw = (process.env['SERVER_URL'] ?? '').trim();
-  const isDevelopment = env.mode === 'development';
 
   if (!raw) {
-    // A release build without an endpoint would silently ship a localhost URL.
-    if (!isDevelopment && process.env['CI']) {
-      throw new Error('SERVER_URL must be set when building the extension for release.');
-    }
     return LOCAL_SERVER_HOST;
   }
 

@@ -42,16 +42,17 @@ storage.
 connection, rejection, and room-closure events. It does not log room contents,
 media titles, or tokens.
 
-Application limits live in `apps/server/src/limits.ts`:
+Connection limits live in `apps/server/src/limits.ts`:
 
 - `MAX_ROOM_MEMBERS` — maximum members a room accepts.
 - `MAX_JOIN_ATTEMPTS` — join attempts allowed per connection.
 - `UNJOINED_TIMEOUT_MS` — how long a socket may stay connected without joining.
-- `ROOM_DEPARTURE_TTL_MS` / the shared `ROOM_IDLE_TTL_MS` — empty and idle room
-  lifetimes.
 
-Bounded message size (`MAX_CLIENT_MESSAGE_LENGTH`) and room-code validation are
-enforced before a request reaches a Durable Object. There is no per-connection
+`ROOM_DEPARTURE_TTL_MS` and `ROOM_IDLE_TTL_MS` in `packages/shared/src/room.ts`
+set the empty and idle room lifetimes.
+
+Room-code validation runs before a request reaches a Durable Object. The object
+enforces message size (`MAX_CLIENT_MESSAGE_LENGTH`) before parsing. There is no per-connection
 playback rate limit; each room is an isolated Durable Object, so a busy room
 degrades itself rather than other rooms.
 

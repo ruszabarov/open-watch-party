@@ -7,7 +7,6 @@ import {
   parseClientSocketMessage,
   removeRoomMember,
   ROOM_CODE_TAKEN_ERROR,
-  ROOM_IDLE_TTL_MS,
   roomStateSchema,
   toPartySnapshot,
   upsertRoomMember,
@@ -27,7 +26,7 @@ import {
   MAX_JOIN_ATTEMPTS,
   MAX_ROOM_MEMBERS,
   nextRoomAlarm,
-  ROOM_DEPARTURE_TTL_MS,
+  UNJOINED_TIMEOUT_MS,
   type SessionState,
 } from './limits';
 
@@ -92,26 +91,28 @@ export class WatchPartyServer extends Server<Env> {
     }
 
     const message = parsed.message;
+    const now = Date.now();
     try {
-      if (this.state && this.state.expiresAt <= Date.now()) {
+      if (this.state && this.state.expiresAt <= now) {
         await this.expireRoom();
+        return;
       }
 
       switch (message.type) {
         case 'room:create':
-          await this.handleCreate(message, sender);
+          await this.handleCreate(message, sender, now);
           return;
         case 'room:join':
-          await this.handleJoin(message, sender);
+          await this.handleJoin(message, sender, now);
           return;
         case 'room:leave':
-          await this.handleLeave(message, sender);
+          await this.handleLeave(message, sender, now);
           return;
         case 'room:heartbeat':
           this.handleHeartbeat(message, sender);
           return;
         case 'playback:update':
-          await this.handlePlayback(message, sender);
+          await this.handlePlayback(message, sender, now);
           return;
       }
     } catch (error) {
@@ -121,11 +122,11 @@ export class WatchPartyServer extends Server<Env> {
   }
 
   override async onClose(connection: Connection<SessionState>): Promise<void> {
-    await this.handleDisconnect(connection);
+    await this.handleDisconnect(connection, Date.now());
   }
 
   override async onError(connection: Connection<SessionState>): Promise<void> {
-    await this.handleDisconnect(connection);
+    await this.handleDisconnect(connection, Date.now());
   }
 
   override async onAlarm(): Promise<void> {
@@ -170,6 +171,7 @@ export class WatchPartyServer extends Server<Env> {
   private async handleCreate(
     message: Extract<ClientMessage, { type: 'room:create' }>,
     sender: Connection<SessionState>,
+    now: number,
   ): Promise<void> {
     if (this.state) {
       this.ack(sender, message.rid, failure(ROOM_CODE_TAKEN_ERROR, 'ROOM_CODE_TAKEN'));
@@ -177,26 +179,30 @@ export class WatchPartyServer extends Server<Env> {
     }
 
     const memberId = crypto.randomUUID();
-    const room = createRoomState(this.name, message.payload, memberId);
-    upsertRoomMember(room, memberId, message.payload.memberName);
-    this.state = room;
-    await this.saveRoom();
-    this.markJoined(sender, memberId);
+    const room = upsertRoomMember(
+      createRoomState(this.name, message.payload, memberId, now),
+      memberId,
+      message.payload.memberName,
+      now,
+    );
+    await this.saveRoom(room);
+    this.markJoined(sender, memberId, now);
     logEvent('room_created', { roomCode: room.roomCode });
 
-    this.ack(sender, message.rid, success({ memberId, snapshot: toPartySnapshot(room) }));
+    this.ack(sender, message.rid, success({ memberId, snapshot: toPartySnapshot(room, now) }));
   }
 
   private async handleJoin(
     message: Extract<ClientMessage, { type: 'room:join' }>,
     sender: Connection<SessionState>,
+    now: number,
   ): Promise<void> {
-    if (!this.state) {
+    if (!this.state || message.payload.roomCode !== this.name) {
       this.ack(sender, message.rid, failure(ROOM_NOT_FOUND_ERROR, 'ROOM_NOT_FOUND'));
       return;
     }
 
-    const session = sender.state ?? createSessionState(Date.now());
+    const session = sender.state ?? createSessionState(now);
     const joinAttempts = session.joinAttempts + 1;
     sender.setState({ ...session, joinAttempts });
 
@@ -214,16 +220,15 @@ export class WatchPartyServer extends Server<Env> {
       this.ack(sender, message.rid, failure(ROOM_FULL_ERROR));
       return;
     }
-    if (session.memberId) {
-      removeRoomMember(this.state, session.memberId);
-    }
-
+    const previous = session.memberId
+      ? removeRoomMember(this.state, session.memberId, now)
+      : this.state;
     const memberId = crypto.randomUUID();
-    upsertRoomMember(this.state, memberId, message.payload.memberName);
-    await this.saveRoom();
-    this.markJoined(sender, memberId);
+    const room = upsertRoomMember(previous, memberId, message.payload.memberName, now);
+    await this.saveRoom(room);
+    this.markJoined(sender, memberId, now);
 
-    const snapshot = toPartySnapshot(this.state);
+    const snapshot = toPartySnapshot(room, now);
     this.ack(sender, message.rid, success({ memberId, snapshot }));
     this.broadcastMessage({ type: 'room:state', snapshot }, sender.id);
   }
@@ -231,6 +236,7 @@ export class WatchPartyServer extends Server<Env> {
   private async handleLeave(
     message: Extract<ClientMessage, { type: 'room:leave' }>,
     sender: Connection<SessionState>,
+    now: number,
   ): Promise<void> {
     const session = sender.state;
     if (!session?.memberId || !this.state) {
@@ -239,8 +245,9 @@ export class WatchPartyServer extends Server<Env> {
     }
 
     const roomCode = this.state.roomCode;
-    await this.removeMember(session.memberId);
-    sender.setState({ ...session, memberId: null });
+    await this.removeMember(session.memberId, now);
+    sender.setState({ ...session, memberId: null, joinDeadline: now + UNJOINED_TIMEOUT_MS });
+    await this.scheduleAlarm();
 
     this.ack(sender, message.rid, success({ roomCode }));
   }
@@ -261,6 +268,7 @@ export class WatchPartyServer extends Server<Env> {
   private async handlePlayback(
     message: Extract<ClientMessage, { type: 'playback:update' }>,
     sender: Connection<SessionState>,
+    now: number,
   ): Promise<void> {
     const session = sender.state;
     if (!session?.memberId) {
@@ -279,37 +287,38 @@ export class WatchPartyServer extends Server<Env> {
       return;
     }
 
-    applyPlaybackUpdate(this.state, message.payload, memberId);
-    await this.saveRoom();
+    const room = applyPlaybackUpdate(this.state, message.payload, memberId, now);
+    await this.saveRoom(room);
 
-    const snapshot = toPartySnapshot(this.state);
+    const snapshot = toPartySnapshot(room, now);
     this.ack(sender, message.rid, success(snapshot));
     this.broadcastMessage({ type: 'playback:state', snapshot }, sender.id);
   }
 
-  private async handleDisconnect(connection: Connection<SessionState>): Promise<void> {
+  private async handleDisconnect(connection: Connection<SessionState>, now: number): Promise<void> {
     const session = connection.state;
     if (session?.memberId) {
-      await this.removeMember(session.memberId);
+      await this.removeMember(session.memberId, now);
     }
 
     logEvent('connection_closed', { joined: session?.memberId != null });
     await this.scheduleAlarm();
   }
 
-  private async removeMember(memberId: string): Promise<void> {
+  private async removeMember(memberId: string, now: number): Promise<void> {
     if (!this.state) {
       return;
     }
 
-    removeRoomMember(this.state, memberId);
-    await this.saveRoom();
-    this.broadcastMessage({ type: 'room:state', snapshot: toPartySnapshot(this.state) });
+    const room = removeRoomMember(this.state, memberId, now);
+    if (room === this.state) return;
+    await this.saveRoom(room);
+    this.broadcastMessage({ type: 'room:state', snapshot: toPartySnapshot(room, now) });
   }
 
-  private markJoined(connection: Connection<SessionState>, memberId: string): void {
+  private markJoined(connection: Connection<SessionState>, memberId: string, now: number): void {
     connection.setState((previous) => ({
-      ...(previous ?? createSessionState(Date.now())),
+      ...(previous ?? createSessionState(now)),
       memberId,
     }));
   }
@@ -325,17 +334,9 @@ export class WatchPartyServer extends Server<Env> {
     return parsed.success ? parsed.data : null;
   }
 
-  private async saveRoom(): Promise<void> {
-    if (!this.state) {
-      return;
-    }
-
-    const room = this.state;
-    room.expiresAt =
-      Date.now() + (room.members.size === 0 ? ROOM_DEPARTURE_TTL_MS : ROOM_IDLE_TTL_MS);
-    await this.ctx.storage.transaction(async (storage) => {
-      await storage.put(STORAGE_KEY, room);
-    });
+  private async saveRoom(room: RoomState): Promise<void> {
+    await this.ctx.storage.put(STORAGE_KEY, room);
+    this.state = room;
     await this.scheduleAlarm();
   }
 
@@ -389,7 +390,8 @@ function logEvent(event: string, fields: Record<string, unknown> = {}): void {
 export default {
   async fetch(request, env): Promise<Response> {
     const roomCode = roomCodeFromPath(new URL(request.url).pathname);
-    if (roomCode !== null && !isValidRoomCode(roomCode)) {
+    if (roomCode === null) return new Response('Not found', { status: 404 });
+    if (!isValidRoomCode(roomCode)) {
       return new Response('Invalid room code', { status: 400 });
     }
 
@@ -398,7 +400,7 @@ export default {
 } satisfies ExportedHandler<Env>;
 
 function roomCodeFromPath(pathname: string): string | null {
-  return pathname.match(/^\/parties\/[^/]+\/([^/]+)\/?$/)?.[1] ?? null;
+  return pathname.match(/^\/parties\/main\/([^/]+)\/?$/)?.[1] ?? null;
 }
 
 function success<T>(data: T): OperationResult<T> {

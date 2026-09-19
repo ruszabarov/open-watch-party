@@ -81,7 +81,7 @@ Copy [apps/extension/.env.example](apps/extension/.env.example) to
 - `SERVER_URL`: realtime backend host the extension connects to (for example,
   `watch.ruszabarov.com`). A leading `http(s)://` is stripped automatically.
   When unset, development builds fall back to `localhost:8787`, matching
-  `pnpm dev:server`. Release builds fail when it is missing.
+  `pnpm dev:server`. CI release builds fail when it is missing.
 
 The value is baked into the extension's Content Security Policy at build time:
 production builds only permit the configured host (plus `'self'`), not arbitrary

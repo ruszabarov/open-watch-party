@@ -97,6 +97,15 @@ timeline. Every other member's engine reconciles its local player against that
 timeline. A report that merely matches the timeline is ignored, so a paused
 player, a buffering stall, or an ad cannot silently pull the room out of sync.
 
+Playback coordination is an XState machine in `background/playback-sync.ts`.
+Its states distinguish inactive, synchronized, applying, sending, and retrying
+playback. `initialTransition` and `transition` compute snapshots and commands;
+`ControlledTabService` executes the commands and reports results as events.
+Timer commands are produced when entering and leaving the relevant states.
+Events carry local monotonic timestamps; room snapshots are anchored when
+received, before navigation. The server passes an explicit epoch timestamp to
+immutable room transitions for persisted playback and expiry.
+
 ## Protocol changes
 
 `packages/shared/src/protocol.ts` is the wire contract. When you change it:

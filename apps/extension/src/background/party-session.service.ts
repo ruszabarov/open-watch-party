@@ -1,6 +1,7 @@
 import {
   ACTIVE_ROOM_EXISTS_ERROR,
-  createRoomCode,
+  ROOM_CODE_ALPHABET,
+  ROOM_CODE_LENGTH,
   errorMessage,
   normalizeRoomCode,
 } from '@open-watch-party/shared';
@@ -43,7 +44,7 @@ export class PartySessionService {
 
   constructor(
     private readonly options: {
-      onRoomSnapshotChanged: () => void;
+      onRoomSnapshotChanged: (snapshot: PartySnapshot, receivedAtMs: number) => void;
       onSessionEnded: () => void;
     },
   ) {}
@@ -51,15 +52,15 @@ export class PartySessionService {
   async updateRoomPlaybackFromControlledTab(update: PlaybackUpdate): Promise<PlaybackUpdateResult> {
     const connection = this.connection;
     try {
-      return await this.sendPlaybackUpdate(update);
+      return await this.sendPlaybackUpdate(connection, update);
     } catch (error) {
-      if (this.connection !== connection) return 'ignored';
+      if (this.connection !== connection) return { status: 'ignored' };
       const state = await getBackgroundState();
-      if (!state.session) return 'ignored';
+      if (!state.session) return { status: 'ignored' };
       if (state.connectionStatus === 'connected' && connection?.isOpen) {
         await reportBackgroundError(errorMessage(error, 'Unexpected error.'));
       }
-      return 'retry';
+      return { status: 'retry' };
     }
   }
 
@@ -94,15 +95,16 @@ export class PartySessionService {
           serviceId,
           initialPlayback: playback,
         });
-        await this.applyRoomResponse(response, true);
+        await this.applyRoomResponse(response);
       } catch (error) {
+        this.closeConnection();
         await clearControlledTab();
         throw error;
       }
     });
   }
 
-  joinRoom(roomCode: string, tabId: number): Promise<RoomResponse> {
+  joinRoom(roomCode: string, tabId: number): Promise<void> {
     return this.lifecycle.run(async () => {
       await this.assertNoActiveSession();
       await setControlledTab({ tabId });
@@ -118,8 +120,8 @@ export class PartySessionService {
         );
 
         await this.applyRoomResponse(response);
-        return response;
       } catch (error) {
+        this.closeConnection();
         await clearControlledTab();
         throw error;
       }
@@ -133,8 +135,8 @@ export class PartySessionService {
       this.needsRejoin = false;
       const connection = this.connection;
       this.connection = null;
-      await leaveRoomState();
       this.options.onSessionEnded();
+      await leaveRoomState();
 
       try {
         if (connection?.isOpen) await connection.leaveRoom();
@@ -160,24 +162,25 @@ export class PartySessionService {
     throw new Error('Could not find an available room code. Please try again.');
   }
 
-  private async sendPlaybackUpdate(update: PlaybackUpdate): Promise<PlaybackUpdateResult> {
+  private async sendPlaybackUpdate(
+    connection: RealtimeConnection | null,
+    update: PlaybackUpdate,
+  ): Promise<PlaybackUpdateResult> {
     const state = await getBackgroundState();
-    if (!state.session) {
-      return 'ignored';
+    if (!state.session || this.connection !== connection) {
+      return { status: 'ignored' };
     }
 
-    const connection = this.connection;
     if (!connection || state.connectionStatus !== 'connected') {
-      return 'retry';
+      return { status: 'retry' };
     }
 
-    const snapshot = await this.readSessionResponse(
-      connection,
-      await connection.updatePlayback(update),
-    );
-    if (!snapshot) return 'ignored';
+    const response = await connection.updatePlayback(update);
+    const receivedAtMs = performance.now();
+    const snapshot = await this.readSessionResponse(connection, response);
+    if (!snapshot) return { status: 'ignored' };
     await updateSessionRoom(snapshot);
-    return 'accepted';
+    return { status: 'accepted', snapshot, receivedAtMs };
   }
 
   private async assertNoActiveSession(): Promise<void> {
@@ -253,7 +256,7 @@ export class PartySessionService {
       );
 
       if (response && this.connection === connection && connection.isOpen) {
-        await this.applyRoomResponse(response, true);
+        await this.applyRoomResponse(response);
       }
     } catch {
       // PartySocket retries transport failures. An open socket with a failed
@@ -288,14 +291,13 @@ export class PartySessionService {
     if (this.connection !== connection || session?.roomCode !== connection.room) return;
 
     this.closeConnection();
-    await leaveRoomState(message);
     this.options.onSessionEnded();
+    await leaveRoomState(message);
   }
 
-  private async applyRoomResponse(
-    response: RoomResponse,
-    applySnapshotToControlledTab = false,
-  ): Promise<void> {
+  private async applyRoomResponse(response: RoomResponse): Promise<void> {
+    const receivedAtMs = performance.now();
+    const connection = this.connection;
     this.needsRejoin = false;
 
     const nextSession = {
@@ -305,14 +307,14 @@ export class PartySessionService {
     };
     await setJoinedSession(nextSession, response.snapshot);
 
-    if (applySnapshotToControlledTab) {
-      this.options.onRoomSnapshotChanged();
+    if (this.connection === connection) {
+      this.options.onRoomSnapshotChanged(response.snapshot, receivedAtMs);
     }
   }
 
   private async applyIncomingPlaybackSnapshot(snapshot: PartySnapshot): Promise<void> {
+    this.options.onRoomSnapshotChanged(snapshot, performance.now());
     await updateSessionRoom(snapshot);
-    this.options.onRoomSnapshotChanged();
   }
 
   private closeConnection(): void {
@@ -343,4 +345,11 @@ function roomClosedMessage(reason: RoomClosedReason): string {
     case 'expired':
       return 'Your previous watch party has ended due to inactivity.';
   }
+}
+
+function createRoomCode(): string {
+  const values = crypto.getRandomValues(new Uint32Array(ROOM_CODE_LENGTH));
+  return Array.from(values, (value) =>
+    ROOM_CODE_ALPHABET.charAt(value % ROOM_CODE_ALPHABET.length),
+  ).join('');
 }

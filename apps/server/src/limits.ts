@@ -1,7 +1,6 @@
 export const MAX_ROOM_MEMBERS = 32;
 export const MAX_JOIN_ATTEMPTS = 4;
 export const UNJOINED_TIMEOUT_MS = 15_000;
-export const ROOM_DEPARTURE_TTL_MS = 2 * 60 * 1_000;
 
 export interface SessionState {
   // null until this connection has been admitted to a room. A connection can

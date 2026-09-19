@@ -8,8 +8,6 @@ import type {
   ServiceId,
 } from './protocol';
 import {
-  ROOM_CODE_ALPHABET,
-  ROOM_CODE_LENGTH,
   sanitizeMemberName,
   sanitizeOptionalTitle,
   MAX_PLAYBACK_POSITION_SEC as maxPlaybackPositionSec,
@@ -20,20 +18,13 @@ export type { RoomState } from './protocol';
 
 export const ROOM_IDLE_TTL_MS = 6 * 60 * 60 * 1_000;
 
-export function createRoomCode(): string {
-  const values = new Uint32Array(ROOM_CODE_LENGTH);
-  crypto.getRandomValues(values);
-
-  return Array.from(values, (value) => {
-    return ROOM_CODE_ALPHABET.charAt(value % ROOM_CODE_ALPHABET.length);
-  }).join('');
-}
+export const ROOM_DEPARTURE_TTL_MS = 2 * 60 * 1_000;
 
 export function createRoomState(
   roomCode: string,
   request: CreateRoomRequest,
   memberId: string,
-  now = Date.now(),
+  now: number,
 ): RoomState {
   assertValidMediaId(request.serviceId, request.initialPlayback.mediaId);
 
@@ -59,8 +50,8 @@ export function upsertRoomMember(
   room: RoomState,
   memberId: string,
   memberName: string,
-  now = Date.now(),
-): PartyMember {
+  now: number,
+): RoomState {
   const existing = room.members.get(memberId);
   const nextMember: PartyMember = {
     id: memberId,
@@ -68,20 +59,28 @@ export function upsertRoomMember(
     joinedAt: existing?.joinedAt ?? now,
   };
 
-  room.members.set(memberId, nextMember);
-  return nextMember;
+  const members = new Map(room.members);
+  members.set(memberId, nextMember);
+  return { ...room, members, expiresAt: now + ROOM_IDLE_TTL_MS };
 }
 
-export function removeRoomMember(room: RoomState, memberId: string): boolean {
-  return room.members.delete(memberId);
+export function removeRoomMember(room: RoomState, memberId: string, now: number): RoomState {
+  if (!room.members.has(memberId)) return room;
+  const members = new Map(room.members);
+  members.delete(memberId);
+  return {
+    ...room,
+    members,
+    expiresAt: now + (members.size === 0 ? ROOM_DEPARTURE_TTL_MS : ROOM_IDLE_TTL_MS),
+  };
 }
 
 export function applyPlaybackUpdate(
   room: RoomState,
   update: PlaybackUpdate,
   memberId: string,
-  now = Date.now(),
-): PlaybackState {
+  now: number,
+): RoomState {
   assertValidMediaId(room.serviceId, update.mediaId);
 
   const playback: PlaybackState = {
@@ -97,14 +96,13 @@ export function applyPlaybackUpdate(
     playback.title = sanitizeOptionalTitle(update.title);
   }
 
-  room.playback = playback;
-  return playback;
+  return { ...room, playback, expiresAt: now + ROOM_IDLE_TTL_MS };
 }
 
 // Invariant: `positionSec` is the playback position at `updatedAt`. Projecting
 // a playing state forward moves both fields together so the result can be
 // projected again without double-counting elapsed time.
-export function resolvePlaybackState(playback: PlaybackState, now = Date.now()): PlaybackState {
+export function resolvePlaybackState(playback: PlaybackState, now: number): PlaybackState {
   if (!playback.playing) {
     return playback.updatedAt === now ? playback : { ...playback, updatedAt: now };
   }
@@ -117,7 +115,7 @@ export function resolvePlaybackState(playback: PlaybackState, now = Date.now()):
   };
 }
 
-export function toPartySnapshot(room: RoomState, now = Date.now()): PartySnapshot {
+export function toPartySnapshot(room: RoomState, now: number): PartySnapshot {
   const watchUrl = SERVICE_BY_ID[room.serviceId].buildCanonicalWatchUrl(room.playback.mediaId);
 
   return {

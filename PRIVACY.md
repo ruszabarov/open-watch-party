@@ -11,12 +11,13 @@ The extension writes to browser-local storage only:
   `Guest NNN`).
 - `session:watch-party` — the current session: room code, your server-assigned
   member id, connection status, the last room snapshot (member list and playback
-  state), the controlled tab's id and media id, and the last error or notice
+  state), the controlled tab's id, and the last error or notice
   shown in the popup.
 
-This data stays in your browser profile. It is sent to the room's server while
-you are in a room so that other members see your display name and playback, and
-it is cleared when you leave or the room ends.
+The display name stays in your browser profile until you change it or clear
+extension data. Session state is cleared when you leave or the room ends.
+While you are in a room, the extension sends your display name, room code, and
+playback updates to the server. Tab ids and local notices stay in your browser.
 
 ## What the server stores
 
@@ -31,8 +32,9 @@ Each room is a single Cloudflare Durable Object. It stores:
 Room state is deleted when the room closes. A room with no members expires after
 two minutes; a room with members expires after six hours of inactivity. The
 server does not keep accounts, watch history, or a long-term log of viewing
-activity. Short-lived operational logs record connection and error events
-without room contents.
+activity. Operational logs record connection and error events and the room code
+when a room is created or expires. They do not contain member names or playback
+contents. Log retention depends on the server operator's Cloudflare settings.
 
 The server is hosted on Cloudflare Workers. Cloudflare processes the connection
 metadata needed to run the service under its own privacy terms.

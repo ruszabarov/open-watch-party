@@ -88,8 +88,8 @@ export function runContentScript(ctx: ContentScriptContext, service: ContentServ
     }
     if (event.type === 'loadedmetadata' || event.type === 'durationchange') {
       playerReady = true;
+      boundMediaId = service.readMediaId();
     }
-    if (playerReady) boundMediaId = service.readMediaId();
 
     api.report(service.reasonForEvent(event.type));
   }
@@ -133,7 +133,9 @@ export function runContentScript(ctx: ContentScriptContext, service: ContentServ
   ctx.onInvalidated(() => observer.disconnect());
 
   const onLocationChange = (): void => {
-    playerReady = false;
+    // WXT can report navigation after metadata loaded. Query/hash changes for
+    // the same video also need no new readiness event.
+    if (service.readMediaId() !== boundMediaId) playerReady = false;
     schedule();
   };
   ctx.addEventListener(window, 'wxt:locationchange', onLocationChange);
@@ -147,7 +149,12 @@ export function runContentScript(ctx: ContentScriptContext, service: ContentServ
   );
 
   const adapter = service.createAdapter(() => activeVideo);
-  ctx.onInvalidated(onMessage('party:apply-playback-target', ({ data }) => adapter.apply(data)));
+  ctx.onInvalidated(
+    onMessage('party:apply-playback-target', ({ data }) => {
+      bindVideo();
+      if (readWatchReport('snapshot')) adapter.apply(data);
+    }),
+  );
 
   service.install?.(ctx, api);
 

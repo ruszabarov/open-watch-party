@@ -23,8 +23,8 @@ class BackgroundController {
 
   constructor() {
     this.partySessionService = new PartySessionService({
-      onRoomSnapshotChanged: () => {
-        this.applyRoomSnapshotToControlledTab();
+      onRoomSnapshotChanged: (snapshot, receivedAtMs) => {
+        this.controlledTabService.applySnapshotToControlledTab(snapshot, receivedAtMs);
       },
       onSessionEnded: () => {
         this.controlledTabService.reset();
@@ -60,12 +60,6 @@ class BackgroundController {
     }, HEARTBEAT_INTERVAL_MS);
   }
 
-  private applyRoomSnapshotToControlledTab(): void {
-    void this.controlledTabService.applySnapshotToControlledTab().catch((error) => {
-      void reportBackgroundError(errorMessage(error, 'Unexpected error.'));
-    });
-  }
-
   private leaveRoomAfterControlledTabClosed(): void {
     void this.partySessionService.leaveRoom().catch(() => {
       // Best effort; closing a controlled tab should not surface a user-facing error.
@@ -75,7 +69,9 @@ class BackgroundController {
   private registerPopupHandlers(): void {
     onMessage('popup:create-room', ({ data }) => this.createRoomFromTab(data.tabId));
 
-    onMessage('popup:join-room', ({ data }) => this.joinRoomFromTab(data.roomCode, data.tabId));
+    onMessage('popup:join-room', ({ data }) =>
+      this.partySessionService.joinRoom(data.roomCode, data.tabId),
+    );
 
     onMessage('popup:leave-room', () => this.partySessionService.leaveRoom());
   }
@@ -84,19 +80,6 @@ class BackgroundController {
     const { serviceId, playback } =
       await this.controlledTabService.requireControllableWatchTab(tabId);
     await this.partySessionService.createRoom(tabId, serviceId, playback);
-  }
-
-  private async joinRoomFromTab(roomCode: string, tabId: number): Promise<void> {
-    const response = await this.partySessionService.joinRoom(roomCode, tabId);
-    try {
-      await this.controlledTabService.navigateControlledTabToRoom(
-        tabId,
-        response.snapshot.watchUrl,
-      );
-    } catch (error) {
-      await this.partySessionService.leaveRoom();
-      throw error;
-    }
   }
 
   private registerContentHandlers(): void {

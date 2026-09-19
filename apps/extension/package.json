@@ -17,6 +17,7 @@
     "@webext-core/messaging": "^3.0.2",
     "copy-to-clipboard": "^4.0.2",
     "partysocket": "^1.2.0",
+    "xstate": "^5.33.2",
     "zod": "catalog:"
   },
   "devDependencies": {
