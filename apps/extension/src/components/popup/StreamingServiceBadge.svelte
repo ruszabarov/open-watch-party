@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ServiceId } from '@open-watch-party/shared';
   import {
-    SUPPORTED_SERVICE_DESCRIPTORS,
+    DEFAULT_SERVICE_DESCRIPTOR,
     getServiceDescriptor,
   } from '~/streaming-services/catalog.js';
 
@@ -13,7 +13,7 @@
   const { serviceId = null, size = 'md' }: Props = $props();
 
   const descriptor = $derived(
-    getServiceDescriptor(serviceId) ?? SUPPORTED_SERVICE_DESCRIPTORS[0],
+    getServiceDescriptor(serviceId) ?? DEFAULT_SERVICE_DESCRIPTOR,
   );
 </script>
 

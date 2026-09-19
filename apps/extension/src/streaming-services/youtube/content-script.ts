@@ -1,32 +1,15 @@
 import { SERVICE_BY_ID } from '@open-watch-party/shared';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 
-import { onMessage, sendMessage, type WatchReport, type WatchReportReason } from '../../messaging';
-import { isVideoTimelineReady } from '../playback-readiness';
+import type { WatchReportReason } from '../../messaging';
+import { runContentScript } from '../content-runner';
 import { createYoutubeAdapter } from './adapter';
 import { isYoutubeAdPlayback } from './ads';
 
 const YOUTUBE = SERVICE_BY_ID.youtube;
-const VIDEO_EVENTS = [
-  'play',
-  'pause',
-  'seeked',
-  'loadedmetadata',
-  'durationchange',
-  'ended',
-] as const;
-const SUPPRESSION_MS = 750;
 
 function findPlayer(video: HTMLVideoElement | null): Element | null {
   return video?.closest('#movie_player') ?? document.querySelector('#movie_player');
-}
-
-function isAdShowing(player: Element | null): boolean {
-  return isYoutubeAdPlayback(player?.getAttribute('class'));
-}
-
-function sendReport(report: WatchReport): void {
-  void sendMessage('content:watch-report', report).catch(() => undefined);
 }
 
 function reasonForVideoEvent(type: string): WatchReportReason {
@@ -43,111 +26,43 @@ function reasonForVideoEvent(type: string): WatchReportReason {
 }
 
 export function runYoutubeContentScript(ctx: ContentScriptContext): void {
-  let activeVideo: HTMLVideoElement | null = null;
-  let activePlayer: Element | null = null;
-  let wasAdShowing = false;
-  let adSuppressUntil = 0;
-  let pendingFrame: number | null = null;
+  let currentPlayer: Element | null = null;
+  let playerObserver: MutationObserver | null = null;
 
-  const readMediaId = (): string | null => {
-    const mediaId = YOUTUBE.extractMediaId(new URL(location.href));
-    if (!activeVideo || mediaId === null) return null;
-    return mediaId;
-  };
+  const readMediaId = (): string | null => YOUTUBE.extractMediaId(new URL(location.href));
+  const isAdShowing = (): boolean => isYoutubeAdPlayback(currentPlayer?.getAttribute('class'));
 
-  const readWatchReport = (reason: WatchReportReason = 'snapshot'): WatchReport | null => {
-    const mediaId = readMediaId();
-    if (
-      mediaId === null ||
-      !isVideoTimelineReady(activeVideo) ||
-      performance.now() < adSuppressUntil ||
-      isAdShowing(activePlayer)
-    ) {
-      return null;
-    }
-
-    return {
-      serviceId: 'youtube',
-      mediaId,
-      title: document.title,
-      positionSec: Number(activeVideo.currentTime.toFixed(3)),
-      playing: !activeVideo.paused,
-      reason,
-    };
-  };
-
-  const sendPlaybackReport = (reason: WatchReportReason = 'snapshot') => {
-    const report = readWatchReport(reason);
-    if (report) sendReport(report);
-  };
-
-  const onVideoEvent = (event: Event) => {
-    refresh(reasonForVideoEvent(event.type));
-  };
-
-  const playerObserver = new MutationObserver(scheduleRefresh);
-  ctx.onInvalidated(() => playerObserver.disconnect());
-
-  function refresh(reason: WatchReportReason = 'snapshot') {
-    const video = document.querySelector<HTMLVideoElement>(
-      '#movie_player video, video.html5-main-video, video',
-    );
-    if (video !== activeVideo) {
-      if (activeVideo) {
-        for (const e of VIDEO_EVENTS) activeVideo.removeEventListener(e, onVideoEvent);
-      }
-      activeVideo = video;
-      if (activeVideo) {
-        for (const e of VIDEO_EVENTS) activeVideo.addEventListener(e, onVideoEvent);
-      }
-    }
-
-    const player = findPlayer(activeVideo);
-    if (player !== activePlayer) {
-      playerObserver.disconnect();
-      activePlayer = player;
-      if (activePlayer) {
-        playerObserver.observe(activePlayer, { attributes: true, attributeFilter: ['class'] });
-      }
-    }
-
-    const adShowing = isAdShowing(activePlayer);
-    if (wasAdShowing && !adShowing) {
-      adSuppressUntil = performance.now() + SUPPRESSION_MS;
-    }
-    wasAdShowing = adShowing;
-
-    sendPlaybackReport(reason);
-  }
-
-  function scheduleRefresh() {
-    if (pendingFrame !== null) return;
-    pendingFrame = ctx.requestAnimationFrame(() => {
-      pendingFrame = null;
-      refresh();
-    });
-  }
-
-  const adapter = createYoutubeAdapter({
-    getVideo: () => activeVideo,
+  runContentScript(ctx, {
+    serviceId: 'youtube',
+    findVideo: () =>
+      document.querySelector<HTMLVideoElement>(
+        '#movie_player video, video.html5-main-video, video',
+      ),
     readMediaId,
-    isAdShowing: () => isAdShowing(activePlayer),
+    canReport: () => !isAdShowing(),
+    reasonForEvent: reasonForVideoEvent,
+    createAdapter: (getVideo) => createYoutubeAdapter({ getVideo, readMediaId, isAdShowing }),
+    onVideoBound: (video, api) => {
+      const player = findPlayer(video);
+      if (player === currentPlayer) return;
+
+      currentPlayer = player;
+      playerObserver?.disconnect();
+      playerObserver = null;
+      if (!player) return;
+
+      // Ad state lives on the player's class attribute. When the ad ends, send
+      // a snapshot so the engine can correct the position YouTube suppressed.
+      let wasAdShowing = isAdShowing();
+      playerObserver = new MutationObserver(() => {
+        const adShowing = isAdShowing();
+        if (wasAdShowing && !adShowing) api.report('snapshot');
+        wasAdShowing = adShowing;
+      });
+      playerObserver.observe(player, { attributes: true, attributeFilter: ['class'] });
+    },
+    install: (installCtx) => {
+      installCtx.onInvalidated(() => playerObserver?.disconnect());
+    },
   });
-
-  const pageObserver = new MutationObserver(scheduleRefresh);
-  pageObserver.observe(document.documentElement, { childList: true, subtree: true });
-  ctx.onInvalidated(() => pageObserver.disconnect());
-
-  ctx.addEventListener(window, 'wxt:locationchange', scheduleRefresh);
-
-  ctx.onInvalidated(
-    onMessage('party:request-watch-report', () => {
-      refresh();
-      return readWatchReport();
-    }),
-  );
-
-  ctx.onInvalidated(onMessage('party:apply-playback-target', ({ data }) => adapter.apply(data)));
-
-  refresh();
 }

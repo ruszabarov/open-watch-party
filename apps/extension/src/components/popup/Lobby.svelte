@@ -3,7 +3,7 @@
   import { Button } from '~/components/ui/button/index.js';
   import { Input } from '~/components/ui/input/index.js';
   import type { ActiveTabSummary } from '~/entrypoints/popup/active-tab.js';
-  import { getServiceDescriptor } from '~/streaming-services/catalog.js';
+  import { getServiceDescriptor, SUPPORTED_SERVICE_DESCRIPTORS } from '~/streaming-services/catalog.js';
   import { resolveMediaTitle } from './room-state-format.js';
   import StreamingServiceBadge from './StreamingServiceBadge.svelte';
 
@@ -26,6 +26,12 @@
   }: Props = $props();
 
   let joinCode = $state('');
+
+  const serviceLabels = SUPPORTED_SERVICE_DESCRIPTORS.map((descriptor) => descriptor.label);
+  const serviceLabelsText =
+    serviceLabels.length > 1
+      ? `${serviceLabels.slice(0, -1).join(', ')} or ${serviceLabels.at(-1)}`
+      : (serviceLabels[0] ?? 'a supported service');
 
   const activeDescriptor = $derived(getServiceDescriptor(activeTab.activeServiceId));
   const heroTitle = $derived(
@@ -98,7 +104,7 @@
           {#if activeDescriptor}
             You're on {activeDescriptor.label} — open a video, then create a room.
           {:else}
-            Open a Netflix or YouTube video, then create a room.
+            Open a {serviceLabelsText} video, then create a room.
           {/if}
         </p>
       </div>

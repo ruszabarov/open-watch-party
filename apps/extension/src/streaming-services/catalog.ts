@@ -1,13 +1,14 @@
 import {
   SERVICE_BY_ID,
   SUPPORTED_SERVICE_DESCRIPTORS,
+  DEFAULT_SERVICE_DESCRIPTOR,
   findServiceByUrl as findServiceByParsedUrl,
   type ServiceDefinition,
   type ServiceDescriptor,
   type ServiceId,
 } from '@open-watch-party/shared';
 
-export { SUPPORTED_SERVICE_DESCRIPTORS };
+export { SUPPORTED_SERVICE_DESCRIPTORS, DEFAULT_SERVICE_DESCRIPTOR };
 export type { ServiceDefinition, ServiceDescriptor, ServiceId };
 
 export function getServiceDefinition(id: ServiceId | null | undefined): ServiceDefinition | null {

@@ -14,11 +14,9 @@
 
   const { settings, isBusy, onSave }: Props = $props();
 
+  // The panel unmounts after a successful save, so the draft only needs to be
+  // seeded once and does not need to track later prop changes.
   let memberName = $state(untrack(() => settings.memberName));
-
-  $effect(() => {
-    memberName = settings.memberName;
-  });
 
   const dirty = $derived(memberName !== settings.memberName);
 

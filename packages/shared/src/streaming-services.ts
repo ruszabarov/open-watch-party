@@ -17,39 +17,45 @@ export type ServiceDefinition = {
   buildCanonicalWatchUrl(mediaId: string): string;
 };
 
+// Single source of truth for supported services. The protocol schema, the
+// popup, and the extension catalog all derive from this registry.
+export const SERVICE_IDS = ['netflix', 'youtube'] as const;
+
+export type ServiceId = (typeof SERVICE_IDS)[number];
+
 export const SERVICE_BY_ID = {
   netflix: NETFLIX_SERVICE,
   youtube: YOUTUBE_SERVICE,
-} satisfies Record<string, ServiceDefinition>;
+} satisfies Record<ServiceId, ServiceDefinition>;
 
-export const SERVICE_DEFINITIONS = Object.values(SERVICE_BY_ID);
+export const SERVICE_DEFINITIONS = SERVICE_IDS.map((id) => SERVICE_BY_ID[id]);
 
-export type ServiceId = keyof typeof SERVICE_BY_ID;
 export type ServiceUrlMatch = {
   serviceId: ServiceId;
   service: ServiceDefinition;
   isWatchPage: boolean;
 };
 
-export const SUPPORTED_SERVICE_IDS = Object.keys(SERVICE_BY_ID);
+export const SUPPORTED_SERVICE_IDS = SERVICE_IDS;
 
 export function isServiceId(value: string): value is ServiceId {
-  return value in SERVICE_BY_ID;
+  return Object.hasOwn(SERVICE_BY_ID, value);
 }
 
 export const SUPPORTED_SERVICE_DESCRIPTORS = SERVICE_DEFINITIONS.map(
   (service) => service.descriptor,
 );
 
+export const DEFAULT_SERVICE_DESCRIPTOR: ServiceDescriptor =
+  SERVICE_BY_ID[SERVICE_IDS[0]].descriptor;
+
 export const SUPPORTED_SERVICE_CONTENT_MATCHES = SERVICE_DEFINITIONS.flatMap(
   (service) => service.contentMatches,
 );
 
 export function findServiceByUrl(url: URL): ServiceUrlMatch | undefined {
-  for (const serviceId of SUPPORTED_SERVICE_IDS) {
-    if (!isServiceId(serviceId)) continue;
-
-    const service = SERVICE_BY_ID[serviceId];
+  for (const serviceId of SERVICE_IDS) {
+    const service: ServiceDefinition = SERVICE_BY_ID[serviceId];
     if (service.matchesUrl(url)) {
       return {
         serviceId,

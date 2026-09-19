@@ -3,7 +3,8 @@
   import { sendMessage } from '../../messaging';
   import { updateSettings, type Settings as StoredSettings } from '../../storage/settings';
   import type { ActiveTabSummary } from './active-tab.js';
-  import { failureMessage, thrownErrorSchema } from '@open-watch-party/shared';
+  import { onDestroy } from 'svelte';
+  import { errorMessage } from '@open-watch-party/shared';
 
   import Header, { type HeaderStatus } from '~/components/popup/Header.svelte';
   import StreamingServiceBadge from '~/components/popup/StreamingServiceBadge.svelte';
@@ -35,7 +36,11 @@ import copyToClipboard from 'copy-to-clipboard';
   let settingsOpen = $state(false);
   let copied = $state(false);
   let copyFailed = $state(false);
-  let copyTimer: ReturnType<typeof setTimeout> | null = $state(null);
+  let copyTimer: ReturnType<typeof setTimeout> | null = null;
+
+  onDestroy(() => {
+    if (copyTimer) clearTimeout(copyTimer);
+  });
 
   const room = $derived(backgroundState.connectionStatus === 'connected' ? backgroundState.room : null);
   const session = $derived(backgroundState.session);
@@ -89,10 +94,7 @@ import copyToClipboard from 'copy-to-clipboard';
       lastAction = null;
       onSuccess?.();
     } catch (error) {
-      commandError = failureMessage(
-        thrownErrorSchema.safeParse(error),
-        'Unexpected popup error.',
-      );
+      commandError = errorMessage(error, 'Unexpected popup error.');
     } finally {
       isBusy = false;
     }
@@ -121,10 +123,7 @@ import copyToClipboard from 'copy-to-clipboard';
       await updateSettings(next);
       closeSettings();
     } catch (error) {
-      settingsError = failureMessage(
-        thrownErrorSchema.safeParse(error),
-        'Unexpected popup error.',
-      );
+      settingsError = errorMessage(error, 'Unexpected popup error.');
     } finally {
       isBusy = false;
     }
